@@ -1,5 +1,7 @@
 """RunEngine pump behavior without contacting EPICS hardware."""
 
+from dataclasses import dataclass
+
 import pytest
 from bluesky import plan_stubs as bps
 from ophyd_async.core import (
@@ -10,8 +12,10 @@ from ophyd_async.core import (
 )
 
 from xpd_tools.pump_plans import (
+    clear_pumps,
     configure_infusion,
     configure_withdrawal,
+    enable_pumps,
     pump_session,
     read_pump_metadata,
     start_infusion,
@@ -19,18 +23,38 @@ from xpd_tools.pump_plans import (
     stop_pumps,
     wait_for_equilibrium,
 )
-from xpd_tools.pumps import DDSSyringeAxis, DDSSyringeController, UltraSyringePump
+from xpd_tools.pumps import DDSSyringeController, UltraSyringePump
+
+
+@dataclass(frozen=True)
+class PumpSet:
+    dds: DDSSyringeController
+    other_dds: DDSSyringeController
+    ultra: UltraSyringePump
 
 
 @pytest.fixture
 async def pumps():
     async with init_devices(mock=True):
-        controller = DDSSyringeController("DDS:1", name="DDS1")
-        first = DDSSyringeAxis("DDS:1-Ax:A}", controller, name="DDS1_p1")
-        second = DDSSyringeAxis("DDS:1-Ax:B}", controller, name="DDS1_p2")
+        dds = DDSSyringeController("DDS:1", name="DDS1")
+        other_dds = DDSSyringeController("DDS:2", name="DDS2")
         ultra = UltraSyringePump("Ultra:1}:", name="Pump_Ultra1")
-    for pump in (first, second, ultra):
+
+    axis_pumps = (dds.p1, dds.p2, other_dds.p1, other_dds.p2)
+    for controller in (dds, other_dds):
+        set_mock_value(controller.communication, "Disabled")
+        set_mock_value(controller.update_pump, "1 second")
+    set_mock_value(ultra.communication, "Disabled")
+    set_mock_value(ultra.update_pump, "Passive")
+
+    for pump in (*axis_pumps, ultra):
         set_mock_value(pump.status, "Idle")
+        set_mock_value(pump.read_infuse_rate, 0)
+        set_mock_value(pump.read_infuse_rate_unit, "")
+        set_mock_value(pump.read_withdraw_rate, 0)
+        set_mock_value(pump.read_withdraw_rate_unit, "")
+        set_mock_value(pump.read_infused, 1)
+        set_mock_value(pump.read_withdrawn, 2)
         for direction in ("infuse", "withdraw"):
             callback_on_mock_put(
                 getattr(pump, f"{direction}_rate"),
@@ -54,17 +78,66 @@ async def pumps():
         callback_on_mock_execute(
             pump.pump_stop, lambda pump=pump: set_mock_value(pump.status, "Idle")
         )
-    for pump in (first, second):
+        callback_on_mock_execute(
+            pump.clear_infused, lambda pump=pump: set_mock_value(pump.read_infused, 0)
+        )
+        callback_on_mock_execute(
+            pump.clear_withdrawn,
+            lambda pump=pump: set_mock_value(pump.read_withdrawn, 0),
+        )
+    for pump in axis_pumps:
         for direction in ("infuse", "withdraw"):
             set_mock_value(getattr(pump, f"read_min_{direction}"), 78.69)
             set_mock_value(getattr(pump, f"read_min_{direction}_unit"), "nl/min")
             set_mock_value(getattr(pump, f"read_max_{direction}"), 81.72)
             set_mock_value(getattr(pump, f"read_max_{direction}_unit"), "ml/min")
-    return first, second, ultra
+    return PumpSet(dds, other_dds, ultra)
+
+
+def test_enable_does_not_start_or_clear_pumps(RE, pumps):
+    RE(enable_pumps([pumps.dds, pumps.ultra]))
+    assert RE(bps.rd(pumps.dds.communication)).plan_result == "Enabled"
+    assert RE(bps.rd(pumps.ultra.communication)).plan_result == "Enabled"
+    for axis in (pumps.dds.p1, pumps.dds.p2, pumps.ultra):
+        assert RE(bps.rd(axis.status)).plan_result == "Idle"
+        assert RE(bps.rd(axis.read_infused)).plan_result == 1
+        assert RE(bps.rd(axis.read_withdrawn)).plan_result == 2
+
+
+def test_clear_selected_pumps_leaves_sibling_counters_and_flow_unchanged(RE, pumps):
+    set_mock_value(pumps.dds.p1.status, "Infusing")
+    set_mock_value(pumps.dds.p2.status, "Withdrawing")
+
+    RE(clear_pumps([pumps.dds.p1, pumps.ultra]))
+
+    for pump in (pumps.dds.p1, pumps.ultra):
+        assert RE(bps.rd(pump.read_infused)).plan_result == 0
+        assert RE(bps.rd(pump.read_withdrawn)).plan_result == 0
+    for axis in (pumps.dds.p2, pumps.other_dds.p1, pumps.other_dds.p2):
+        assert RE(bps.rd(axis.read_infused)).plan_result == 1
+        assert RE(bps.rd(axis.read_withdrawn)).plan_result == 2
+    assert RE(bps.rd(pumps.dds.p1.status)).plan_result == "Infusing"
+    assert RE(bps.rd(pumps.dds.p2.status)).plan_result == "Withdrawing"
+    assert RE(bps.rd(pumps.ultra.status)).plan_result == "Idle"
+    assert RE(bps.rd(pumps.dds.communication)).plan_result == "Disabled"
+    assert RE(bps.rd(pumps.ultra.communication)).plan_result == "Disabled"
+
+
+def test_enable_deduplicates_controller_and_preserves_update_settings(RE, pumps):
+    dds_enables = []
+    callback_on_mock_put(
+        pumps.dds.communication, lambda value: dds_enables.append(value)
+    )
+
+    RE(enable_pumps([pumps.dds, pumps.dds, pumps.ultra], update="2 second"))
+
+    assert dds_enables == ["Enabled"]
+    assert RE(bps.rd(pumps.dds.update_pump)).plan_result == "1 second"
+    assert RE(bps.rd(pumps.ultra.update_pump)).plan_result == "2 second"
 
 
 def test_configure_start_zero_and_metadata(RE, pumps):
-    first, second, _ = pumps
+    first, second = pumps.dds.p1, pumps.dds.p2
     RE(
         configure_infusion(
             [first, second],
@@ -80,7 +153,7 @@ def test_configure_start_zero_and_metadata(RE, pumps):
     assert RE(bps.rd(first.target_vol)).plan_result == 30
     RE(start_infusion([first, second], [100, "0 ul/min"]))
     assert RE(read_pump_metadata([first, second])).plan_result == {
-        "pumps": ["DDS1_p1", "DDS1_p2"],
+        "pumps": [first.name, second.name],
         "infuse_rate": [100, 0],
         "infuse_rate_unit": ["ul/min", ""],
         "pump_status": ["Infusing", "Idle"],
@@ -90,7 +163,7 @@ def test_configure_start_zero_and_metadata(RE, pumps):
 
 
 def test_preflight_rejects_wrong_syringe_and_limit(RE, pumps):
-    first, second, _ = pumps
+    first, second = pumps.dds.p1, pumps.dds.p2
     set_mock_value(second.read_min_infuse, 35.21)
     with pytest.raises(ValueError, match="selected DDS syringe"):
         RE(
@@ -109,18 +182,19 @@ def test_preflight_rejects_wrong_syringe_and_limit(RE, pumps):
 
 
 def test_ultra_and_withdrawal(RE, pumps):
-    first, _, ultra = pumps
+    first, second, ultra = pumps.dds.p1, pumps.dds.p2, pumps.ultra
     with pytest.warns(UserWarning, match="Ultra panel"):
         RE(configure_infusion([ultra], [50], ["30 ml"], [100], ["steel"], [True]))
     RE(configure_withdrawal([first], [50], ["30 ml"], [100], ["steel"], [True]))
     RE(start_withdrawal([first], [100]))
     assert RE(bps.rd(first.status)).plan_result == "Withdrawing"
     assert RE(bps.rd(first.read_withdraw_rate)).plan_result == 100
+    assert RE(bps.rd(second.status)).plan_result == "Idle"
     RE(stop_pumps([first]))
 
 
 def test_session_stops_on_success_failure_and_cleanup_failure(RE, pumps):
-    first, second, _ = pumps
+    first, second = pumps.dds.p1, pumps.dds.p2
 
     def setup():
         yield from bps.null()
@@ -162,7 +236,7 @@ def test_session_stops_on_success_failure_and_cleanup_failure(RE, pumps):
 
 
 def test_equilibrium_segment_flow(RE, pumps):
-    first, second, _ = pumps
+    first, second = pumps.dds.p1, pumps.dds.p2
     set_mock_value(first.status, "Infusing")
     set_mock_value(first.read_infuse_rate, 100)
     set_mock_value(first.read_infuse_rate_unit, "ul/min")

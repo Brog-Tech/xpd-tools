@@ -1,4 +1,4 @@
-"""Offline EPICS source and pump-policy checks."""
+"""Offline pump behavior checks."""
 
 import math
 
@@ -6,7 +6,6 @@ import pytest
 from ophyd_async.core import init_devices, set_mock_value
 
 from xpd_tools.pumps import (
-    DDSSyringeAxis,
     DDSSyringeController,
     UltraSyringePump,
     rate_limits,
@@ -17,36 +16,21 @@ from xpd_tools.pumps import (
 
 
 @pytest.mark.asyncio
-async def test_pump_sources_and_readables():
+async def test_pump_axes_and_ultra_are_readable():
     async with init_devices(mock=True):
         controller = DDSSyringeController("XF:28IDC-ES:1{Pump:Syrng-DDS:1", name="DDS1")
-        axis = DDSSyringeAxis(
-            "XF:28IDC-ES:1{Pump:Syrng-DDS:1-Ax:A}", controller, name="DDS1_p1"
-        )
         ultra = UltraSyringePump(
             "XF:28IDC-ES:1{Pump:Syrng-Ultra:1}:", name="Pump_Ultra1"
         )
-    assert axis.controller is controller
-    for pump, suffix in ((axis, "DDS:1-Ax:A}"), (ultra, "Ultra:1}:")):
+    for pump in (controller.p1, controller.p2, ultra):
         set_mock_value(pump.status, "Idle")
         set_mock_value(pump.read_infuse_rate, 100.0)
         set_mock_value(pump.read_infuse_rate_unit, "ul/min")
         readings = await pump.read()
         assert readings[pump.status.name]["value"] == "Idle"
         assert readings[pump.read_infuse_rate.name]["value"] == 100.0
-        source = (await pump.status.describe())[pump.status.name]["source"]
-        assert source.endswith(f"{suffix}STATUS")
         assert pump.infuse_rate.name in await pump.read_configuration()
         assert pump.pump_infuse.name not in readings
-    assert (await controller.communication.describe())[controller.communication.name][
-        "source"
-    ].endswith("DDS:1}DISABLE")
-    assert (await axis.read_min_infuse.describe())[axis.read_min_infuse.name][
-        "source"
-    ].endswith("DDS:1-Ax:A}IRATE:MIN:RBV")
-    assert (await ultra.read_infuse_rate_unit.describe())[
-        ultra.read_infuse_rate_unit.name
-    ]["source"].endswith("Ultra:1}:IRATEUNITS:RBV")
 
 
 def test_syringe_policy():

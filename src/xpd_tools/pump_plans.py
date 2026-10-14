@@ -12,6 +12,7 @@ from ophyd_async.core import wait_for_value
 
 from .pumps import (
     DDSSyringeAxis,
+    DDSSyringeController,
     UltraSyringePump,
     rate_limits,
     rate_unit_converter,
@@ -135,7 +136,40 @@ def configure_infusion(
     *,
     rate_unit="ul/min",
 ):
-    """Validate every syringe and IOC limit before setting infusion parameters."""
+    """Validate syringes and IOC limits before writing infusion settings.
+
+    Parameters
+    ----------
+    pumps : sequence of DDSSyringeAxis or UltraSyringePump
+        Connected pumps; zero-rate entries are not written.
+    syringe_sizes_ml : sequence of float
+        Syringe capacities in mL, one per pump.
+    target_volumes : sequence of float or str
+        Targets in mL or strings such as ``'30 ml'``, one per pump.
+    rates : sequence of float or str
+        Rates in ``rate_unit`` or strings such as ``'100 ul/min'``.
+    materials : sequence of str
+        Syringe identifiers: ``steel``, ``glass_H1000`` or ``plastic_BD``.
+    set_targets : sequence of bool
+        Whether to validate and write each target; False preserves it.
+    rate_unit : str, optional
+        Units of numeric rates; default is ``'ul/min'``.
+
+    Yields
+    ------
+    Msg
+        RunEngine messages for range checks and setpoint writes.
+
+    Raises
+    ------
+    ValueError
+        If input lengths differ or syringe, target, or rate checks fail.
+
+    Warns
+    -----
+    UserWarning
+        For nonzero Ultra rates: confirm the syringe on the pump panel.
+    """
     yield from _configure(
         pumps,
         syringe_sizes_ml,
@@ -158,7 +192,40 @@ def configure_withdrawal(
     *,
     rate_unit="ul/min",
 ):
-    """Validate every syringe and IOC limit before setting withdrawal parameters."""
+    """Validate syringes and IOC limits before writing withdrawal settings.
+
+    Parameters
+    ----------
+    pumps : sequence of DDSSyringeAxis or UltraSyringePump
+        Connected pumps; zero-rate entries are not written.
+    syringe_sizes_ml : sequence of float
+        Syringe capacities in mL, one per pump.
+    target_volumes : sequence of float or str
+        Targets in mL or strings such as ``'30 ml'``, one per pump.
+    rates : sequence of float or str
+        Rates in ``rate_unit`` or strings such as ``'100 ul/min'``.
+    materials : sequence of str
+        Syringe identifiers: ``steel``, ``glass_H1000`` or ``plastic_BD``.
+    set_targets : sequence of bool
+        Whether to validate and write each target; False preserves it.
+    rate_unit : str, optional
+        Units of numeric rates; default is ``'ul/min'``.
+
+    Yields
+    ------
+    Msg
+        RunEngine messages for range checks and setpoint writes.
+
+    Raises
+    ------
+    ValueError
+        If input lengths differ or syringe, target, or rate checks fail.
+
+    Warns
+    -----
+    UserWarning
+        For nonzero Ultra rates: confirm the syringe on the pump panel.
+    """
     yield from _configure(
         pumps,
         syringe_sizes_ml,
@@ -190,17 +257,75 @@ def _start(pumps, rates, direction, rate_unit):
 
 
 def start_infusion(pumps, rates, *, rate_unit="ul/min"):
-    """Start pumps with nonzero rates, waiting for IOC status confirmation."""
+    """Start selected pumps with nonzero rates and await infusion status.
+
+    Parameters
+    ----------
+    pumps : sequence of DDSSyringeAxis or UltraSyringePump
+        Connected pumps, already configured for infusion.
+    rates : sequence of float or str
+        Nonnegative rates, one per pump; zero skips starting without stopping.
+        Values only select pumps to start; they do not set rates.
+    rate_unit : str, optional
+        Units of numeric rates; strings include units. Default is ``'ul/min'``.
+
+    Yields
+    ------
+    Msg
+        Start commands and waits for ``Infusing`` status, up to 10 seconds.
+
+    Raises
+    ------
+    ValueError
+        If lengths differ or rates are negative or nonfinite.
+    """
     yield from _start(pumps, rates, "infuse", rate_unit)
 
 
 def start_withdrawal(pumps, rates, *, rate_unit="ul/min"):
-    """Start withdrawal for pumps with nonzero rates."""
+    """Start selected pumps with nonzero rates and await withdrawal status.
+
+    Parameters
+    ----------
+    pumps : sequence of DDSSyringeAxis or UltraSyringePump
+        Connected pumps, already configured for withdrawal.
+    rates : sequence of float or str
+        Nonnegative rates, one per pump; zero skips starting without stopping.
+        Values only select pumps to start; they do not set rates.
+    rate_unit : str, optional
+        Units of numeric rates; strings include units. Default is ``'ul/min'``.
+
+    Yields
+    ------
+    Msg
+        Start commands and waits for ``Withdrawing`` status, up to 10 seconds.
+
+    Raises
+    ------
+    ValueError
+        If lengths differ or rates are negative or nonfinite.
+    """
     yield from _start(pumps, rates, "withdraw", rate_unit)
 
 
 def stop_pumps(pumps):
-    """Attempt STOP and status confirmation for every pump, even on failure."""
+    """Stop every selected pump and confirm flow has stopped, even on failure.
+
+    Parameters
+    ----------
+    pumps : iterable of DDSSyringeAxis or UltraSyringePump
+        Connected pumps to stop; unselected siblings are untouched.
+
+    Yields
+    ------
+    Msg
+        STOP commands and status-confirmation waits, up to 10 seconds per pump.
+
+    Raises
+    ------
+    ExceptionGroup
+        Collected command or status failures, after attempting every pump.
+    """
     failures = []
     for pump in pumps:
         try:
@@ -220,27 +345,75 @@ def stop_pumps(pumps):
         raise ExceptionGroup("Pump stop failures", failures)
 
 
-def enable_pumps(pumps, *, update=".5 second", clear=False):
-    """Enable each DDS controller once; leave counter clearing opt-in."""
-    controllers = set()
+def enable_pumps(
+    devices: Sequence[DDSSyringeController | UltraSyringePump],
+    *,
+    update: str = ".5 second",
+) -> Generator:
+    """Enable DDS controllers or Ultra pumps without starting flow or clearing.
+
+    Parameters
+    ----------
+    devices : sequence of DDSSyringeController or UltraSyringePump
+        Connected communication targets, enabled once each. DDS axes are not
+        targets: enabling their controller affects both pumps.
+    update : str, optional
+        Ultra IOC scan setting; default is ``'.5 second'``. DDS scan settings
+        are preserved.
+
+    Yields
+    ------
+    Msg
+        Communication-enable and Ultra update-scan writes.
+    """
+    selected = dict.fromkeys(devices)
+    for device in selected:
+        yield from bps.mv(device.communication, "Enabled")
+        if isinstance(device, UltraSyringePump):
+            yield from bps.mv(device.update_pump, update)
+
+
+def clear_pumps(pumps: Sequence[Pump]) -> Generator:
+    """Clear infused and withdrawn counters on explicitly selected pumps.
+
+    Parameters
+    ----------
+    pumps : sequence of DDSSyringeAxis or UltraSyringePump
+        Connected axes or Ultra pumps to clear, not DDS controllers.
+
+    Yields
+    ------
+    Msg
+        Both counter-clear commands for each selected pump.
+
+    Notes
+    -----
+    Communication settings, flow, and unselected sibling counters are unchanged.
+    """
     for pump in pumps:
-        if isinstance(pump, DDSSyringeAxis):
-            controller = pump.controller
-            if controller in controllers:
-                continue
-            controllers.add(controller)
-            yield from bps.mv(controller.communication, "Enabled")
-        else:
-            yield from bps.mv(pump.communication, "Enabled")
-            yield from bps.mv(pump.update_pump, update)
-    if clear:
-        for pump in pumps:
-            yield from bps.trigger(pump.clear_infused, wait=True)
-            yield from bps.trigger(pump.clear_withdrawn, wait=True)
+        yield from bps.trigger(pump.clear_infused, wait=True)
+        yield from bps.trigger(pump.clear_withdrawn, wait=True)
 
 
 def read_pump_metadata(pumps):
-    """Return live readback metadata for run-start documents."""
+    """Read live pump metadata for a run-start document.
+
+    Parameters
+    ----------
+    pumps : iterable of DDSSyringeAxis or UltraSyringePump
+        Connected pumps in metadata order.
+
+    Returns
+    -------
+    dict
+        Ordered parallel lists keyed by ``pumps``, ``infuse_rate``,
+        ``infuse_rate_unit`` and ``pump_status``.
+
+    Yields
+    ------
+    Msg
+        Live rate, rate-unit and status reads.
+    """
     result = {"pumps": [], "infuse_rate": [], "infuse_rate_unit": [], "pump_status": []}
     for pump in pumps:
         result["pumps"].append(pump.name)
@@ -253,7 +426,33 @@ def read_pump_metadata(pumps):
 
 
 def wait_for_equilibrium(mixer_pump_list, *, ratio=1, tubing_ID_mm=1.016):  # noqa: N803
-    """Wait cumulative residence times for successive tubing/flow segments."""
+    """Wait for the scaled sum of tubing-segment residence times.
+
+    Parameters
+    ----------
+    mixer_pump_list : sequence of sequences
+        Segments shaped as ``['30 cm', pump1, pump2, ...]``. Length units are
+        ``mm``, ``cm`` or ``m``; only infusing pumps contribute live flow.
+    ratio : float, optional
+        Nonnegative residence-time multiplier; default is 1.
+    tubing_ID_mm : float, optional
+        Positive tubing inner diameter in mm; default is 1.016.
+
+    Returns
+    -------
+    float
+        Total wait duration in seconds, including ``ratio``.
+
+    Yields
+    ------
+    Msg
+        Pump readbacks followed by the residence-time sleep.
+
+    Raises
+    ------
+    ValueError
+        If segments or geometry are invalid, or a segment has no positive flow.
+    """
     if (
         not mixer_pump_list
         or not math.isfinite(ratio)
@@ -284,7 +483,32 @@ def wait_for_equilibrium(mixer_pump_list, *, ratio=1, tubing_ID_mm=1.016):  # no
 def pump_session(
     body_factory: Callable[[], Generator], *, setup: Generator, pumps: list[Pump]
 ):
-    """Finalize every potentially started pump, including on setup failure."""
+    """Run setup and acquisition, then stop tracked pumps on every exit path.
+
+    Parameters
+    ----------
+    body_factory : callable
+        Zero-argument factory producing the acquisition plan after setup.
+    setup : generator
+        Pump setup plan to execute before acquisition.
+    pumps : list of DDSSyringeAxis or UltraSyringePump
+        Cleanup targets; setup may append pumps before attempting to start them.
+
+    Returns
+    -------
+    object
+        Acquisition plan's return value after successful cleanup.
+
+    Yields
+    ------
+    Msg
+        Setup, acquisition and unconditional pump-stop messages.
+
+    Raises
+    ------
+    ExceptionGroup
+        If cleanup fails; includes the setup/acquisition error when both fail.
+    """
     failure = None
 
     def body():
