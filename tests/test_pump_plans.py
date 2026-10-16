@@ -244,3 +244,63 @@ def test_equilibrium_segment_flow(RE, pumps):
     assert duration == 0
     with pytest.raises(ValueError, match="no positive infusing flow"):
         RE(wait_for_equilibrium([["10 cm", second]], ratio=1))
+
+
+def test_tubing_diameters(RE, pumps):
+    rate = 100 # ul/min
+    height = 1
+    import numpy as np
+    first, second = pumps.dds.p1, pumps.dds.p2
+    set_mock_value(first.status, "Infusing")
+    set_mock_value(first.read_infuse_rate, rate)
+    set_mock_value(first.read_infuse_rate_unit, "ul/min")
+
+    def vol_calc_time(diameter, height, rate):
+        _rate = rate/1000 # assume ul/min, convert to ml
+        volume = np.pi*((diameter)/2.0)**2.* height * _rate
+        return volume * 60
+
+    diameters = {
+        'positive': 1.0, # area = 0.78539816339
+        'negative': -1.0,
+        'NaN': np.nan,
+        'string': '1',
+        }
+
+    for condition, val in diameters.items():
+        if condition == 'positive':
+            duration = RE(
+                wait_for_equilibrium(
+                    mixer_pump_list=[[f"{height} cm", first]],
+                    ratio=1,
+                    tubing_ID_mm=val
+                )
+            ).plan_result
+            assert duration == vol_calc_time(val, height, rate)
+        elif condition == 'negative':
+            with pytest.raises(ValueError, match="Nonempty mixer and nonnegative residence geometry required"):
+                duration = RE(
+                    wait_for_equilibrium(
+                        mixer_pump_list=[[f"{height} cm", first]],
+                        ratio=1,
+                        tubing_ID_mm=val
+                    )
+                ).plan_result
+        elif condition == 'NaN':
+            with pytest.raises(ValueError, match="Nonempty mixer and nonnegative residence geometry required"):
+                duration = RE(
+                    wait_for_equilibrium(
+                        mixer_pump_list=[[f"{height} cm", first]],
+                        ratio=1,
+                        tubing_ID_mm=val
+                    )
+                ).plan_result
+        elif condition == 'string':
+            with pytest.raises(TypeError, match="must be real number, not str"):
+                duration = RE(
+                    wait_for_equilibrium(
+                        mixer_pump_list=[[f"{height} cm", first]],
+                        ratio=1,
+                        tubing_ID_mm=val
+                    )
+                ).plan_result
