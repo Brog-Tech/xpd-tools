@@ -41,7 +41,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-  "ophyd-async[ca, pva, sim] @ git+https://github.com/bluesky/ophyd-async@main",
+  "ophyd-async[ca,pva,sim] @ git+https://github.com/bluesky/ophyd-async@main",
   "inflection",
   "import-linter",
   "numpydoc",

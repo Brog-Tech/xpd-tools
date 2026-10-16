@@ -3,10 +3,10 @@ revision = 3
 requires-python = ">=3.11, <3.14"
 resolution-markers = [
     "python_full_version >= '3.12' and sys_platform == 'win32'",
-    "python_full_version < '3.12' and sys_platform == 'win32'",
     "python_full_version >= '3.12' and sys_platform == 'emscripten'",
-    "python_full_version < '3.12' and sys_platform == 'emscripten'",
     "python_full_version >= '3.12' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version < '3.12' and sys_platform == 'win32'",
+    "python_full_version < '3.12' and sys_platform == 'emscripten'",
     "python_full_version < '3.12' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 
@@ -2458,8 +2458,8 @@ wheels = [
 
 [[package]]
 name = "ophyd-async"
-version = "0.21.2.dev4+gd2383e9a3"
-source = { git = "https://github.com/bluesky/ophyd-async?rev=main#d2383e9a3f103f8f1759883f120689c278fb898f" }
+version = "0.21.4.dev11+g888f84c63"
+source = { git = "https://github.com/bluesky/ophyd-async?rev=main#888f84c633bce8962e5f2f941da5ce507de247e9" }
 dependencies = [
     { name = "bluesky" },
     { name = "colorlog" },
