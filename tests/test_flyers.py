@@ -41,7 +41,7 @@ def test_calculate_move_time_for_flyscan(
 @pytest.mark.parametrize(
     "num_pulses, max_exposure_time, start_position,"
     " stop_position, encoder_resolution, max_motor_velocity,"
-    " encoder_pos_at_zero, time_based,"
+    " current_enc_position, time_based,"
     " expected_flyer_info, expected_motor_info",
     [
         (
@@ -60,6 +60,8 @@ def test_calculate_move_time_for_flyscan(
                 pulse_width=1,
                 pulse_step=100,
                 time_based=False,
+                position_dataset_name="Angle",
+                position_dataset_units="deg",
             ),
             FlyMotorInfo(start_position=0.0, end_position=100.0, time_for_move=2.0),
         ),
@@ -79,6 +81,8 @@ def test_calculate_move_time_for_flyscan(
                 pulse_width=1,
                 pulse_step=225,
                 time_based=False,
+                position_dataset_name="Angle",
+                position_dataset_units="deg",
             ),
             FlyMotorInfo(start_position=90.0, end_position=0.0, time_for_move=3.0),
         ),
@@ -95,9 +99,11 @@ def test_calculate_move_time_for_flyscan(
                 start=0,
                 num_pulses=10,
                 direction=PandaPcompDirection.POSITIVE,
-                pulse_width=0.101,
+                pulse_width=0.1,
                 pulse_step=0.2,
                 time_based=True,
+                position_dataset_name="Angle",
+                position_dataset_units="deg",
             ),
             FlyMotorInfo(start_position=0.0, end_position=50.0, time_for_move=2.0),
         ),
@@ -114,9 +120,11 @@ def test_calculate_move_time_for_flyscan(
                 start=39240,
                 num_pulses=1801,
                 direction=PandaPcompDirection.POSITIVE,
-                pulse_width=0.051,
+                pulse_width=0.05,
                 pulse_step=0.051,
                 time_based=True,
+                position_dataset_name="Angle",
+                position_dataset_units="deg",
             ),
             FlyMotorInfo(start_position=0.0, end_position=180.0, time_for_move=91.851),
         ),
@@ -129,7 +137,7 @@ def test_construct_fly_info_models(
     stop_position,
     encoder_resolution,
     max_motor_velocity,
-    encoder_pos_at_zero,
+    current_enc_position,
     time_based,
     expected_flyer_info,
     expected_motor_info,
@@ -141,7 +149,8 @@ def test_construct_fly_info_models(
         stop_position,
         encoder_resolution,
         max_motor_velocity,
-        encoder_pos_at_zero,
+        current_position=0.0,
+        current_enc_position=current_enc_position,
         time_based=time_based,
     )
     assert flyer_info.start == expected_flyer_info.start
@@ -160,7 +169,7 @@ def test_construct_fly_info_models(
 @pytest.mark.parametrize(
     "num_pulses, max_exposure_time, start_position,"
     " stop_position, encoder_resolution, max_motor_velocity,"
-    " encoder_pos_at_zero, expected_match",
+    " current_enc_position, expected_match",
     [
         # travel_counts=1000, num_pulses-1=6 -> 1000 % 6 != 0
         (7, 0.1, 0.0, 100.0, 0.1, 50.0, 0, "not evenly divisible"),
@@ -175,7 +184,7 @@ def test_construct_fly_info_models_raises(
     stop_position,
     encoder_resolution,
     max_motor_velocity,
-    encoder_pos_at_zero,
+    current_enc_position,
     expected_match,
 ):
     with pytest.raises(ValueError, match=expected_match):
@@ -186,5 +195,53 @@ def test_construct_fly_info_models_raises(
             stop_position,
             encoder_resolution,
             max_motor_velocity,
-            encoder_pos_at_zero,
+            current_position=0.0,
+            current_enc_position=current_enc_position,
         )
+
+
+@pytest.mark.parametrize(
+    "start_position, stop_position, current_position, current_enc_position,"
+    " expected_start",
+    [
+        (1.0, 361.0, 0.5, 767, 1323),
+        # The counter offset is arbitrary, only the difference matters
+        (1.0, 361.0, 0.5, 767 - 400_000, 1323 - 400_000),
+        (1.0, 361.0, 0.5, -2_000_000_000, -1_999_999_444),
+        # Multi-revolution motor positions only matter relative to the reading
+        (721.0, 1081.0, 720.5, 767 - 400_000, 1323 - 400_000),
+        (361.0, 1.0, 362.0, 1600, 489),
+    ],
+)
+def test_construct_fly_info_models_relative_to_reading(
+    start_position,
+    stop_position,
+    current_position,
+    current_enc_position,
+    expected_start,
+):
+    flyer_info, _ = construct_fly_info_models(
+        11,
+        0.01,
+        start_position,
+        stop_position,
+        360 / 400_000,
+        100.0,
+        current_position=current_position,
+        current_enc_position=current_enc_position,
+    )
+    assert flyer_info.start == expected_start
+    assert flyer_info.pulse_step == 40_000
+    # The captured position is scaled back to the motor position
+    assert flyer_info.position_scale == pytest.approx(360 / 400_000)
+    assert expected_start * flyer_info.position_scale + flyer_info.position_offset == (
+        pytest.approx(start_position, abs=1e-3)
+    )
+
+
+def test_construct_fly_info_models_float_rounding():
+    """Truncating 359.9 / 0.0009 = 399888.88... used to lose a count."""
+    flyer_info, _ = construct_fly_info_models(
+        2, 0.01, 0.0, 359.9, 0.0009, 100.0, 0.0, 211
+    )
+    assert flyer_info.pulse_step == 399_889
