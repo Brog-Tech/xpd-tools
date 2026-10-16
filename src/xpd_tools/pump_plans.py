@@ -330,7 +330,7 @@ def stop_pumps(pumps):
     for pump in pumps:
         try:
             yield from bps.trigger(pump.pump_stop, wait=True)
-            yield from bps.wait_for(
+            tasks = yield from bps.wait_for(
                 [
                     lambda pump=pump: wait_for_value(
                         pump.status,
@@ -339,6 +339,8 @@ def stop_pumps(pumps):
                     )
                 ]
             )
+            for task in tasks:
+                task.result()
         except Exception as exc:
             failures.append(exc)
     if failures:
