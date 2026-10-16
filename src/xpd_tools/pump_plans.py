@@ -247,13 +247,17 @@ def _start(pumps, rates, direction, rate_unit):
         if rate:
             yield from bps.trigger(getattr(pump, f"pump_{direction}"), wait=True)
             expected = "Infusing" if direction == "infuse" else "Withdrawing"
-            yield from bps.wait_for(
+            tasks = yield from bps.wait_for(
                 [
                     lambda pump=pump, expected=expected: wait_for_value(
-                        pump.status, expected, timeout=10
+                        pump.status,
+                        expected,
+                        timeout=10,
                     )
                 ]
             )
+            for task in tasks:
+                task.result()
 
 
 def start_infusion(pumps, rates, *, rate_unit="ul/min"):
