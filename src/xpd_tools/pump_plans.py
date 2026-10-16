@@ -457,6 +457,7 @@ def wait_for_equilibrium(mixer_pump_list, *, ratio=1, tubing_ID_mm=1.016):  # no
         not mixer_pump_list
         or not math.isfinite(ratio)
         or ratio < 0
+        or not math.isfinite(tubing_ID_mm)
         or tubing_ID_mm <= 0
     ):
         raise ValueError("Nonempty mixer and nonnegative residence geometry required")
