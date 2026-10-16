@@ -331,9 +331,17 @@ def stop_pumps(pumps):
         Collected command or status failures, after attempting every pump.
     """
     failures = []
-    for pump in pumps:
+    pending = []
+    for index, pump in enumerate(pumps):
+        group = f"stop_pumps_{index}"
         try:
-            yield from bps.trigger(pump.pump_stop, wait=True)
+            yield from bps.trigger(pump.pump_stop, group=group)
+            pending.append((pump, group))
+        except Exception as exc:
+            failures.append(exc)
+    for pump, group in pending:
+        try:
+            yield from bps.wait(group=group)
             tasks = yield from bps.wait_for(
                 [
                     lambda pump=pump: wait_for_value(

@@ -235,6 +235,29 @@ def test_session_stops_on_success_failure_and_cleanup_failure(RE, pumps):
         RE(pump_session(failing, setup=setup(), pumps=[first, second]))
 
 
+def test_stop_dispatches_all_pumps_before_waiting_for_status(RE, pumps, monkeypatch):
+    first, second = pumps.dds.p1, pumps.dds.p2
+    events = []
+    callback_on_mock_execute(first.pump_stop, lambda: events.append("first STOP"))
+    callback_on_mock_execute(second.pump_stop, lambda: events.append("second STOP"))
+
+    async def stalled_status(*args, **kwargs):
+        events.append("status wait")
+        raise TimeoutError("pump status did not change")
+
+    monkeypatch.setattr("xpd_tools.pump_plans.wait_for_value", stalled_status)
+
+    with pytest.raises(ExceptionGroup, match="Pump stop failures"):
+        RE(stop_pumps([first, second]))
+
+    assert events == [
+        "first STOP",
+        "second STOP",
+        "status wait",
+        "status wait",
+    ]
+
+
 def test_equilibrium_segment_flow(RE, pumps):
     first, second = pumps.dds.p1, pumps.dds.p2
     set_mock_value(first.status, "Infusing")
