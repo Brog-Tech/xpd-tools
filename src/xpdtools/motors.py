@@ -23,16 +23,38 @@ def get_encoder_value_from_pos(
     current_position : float
         The current position of the motor.
     encoder_resolution : float
-        The resolution of the encoder in counts per degree.
+        The resolution of the encoder in degrees per count (motor record ERES).
     encoder_pos_at_zero : int
         The encoder position corresponding to 0 degrees.
 
     Returns
     -------
     int
-        The encoder value corresponding to the given motor position.
+        The encoder value corresponding to the given motor position, rounded to
+        the nearest count.
     """
-    return int(current_position / encoder_resolution + encoder_pos_at_zero)
+    return round(current_position / encoder_resolution) + encoder_pos_at_zero
+
+
+def get_encoder_counts_per_rev(encoder_resolution: float) -> int:
+    """Calculate the number of encoder counts per revolution.
+
+    Parameters
+    ----------
+    encoder_resolution : float
+        The resolution of the encoder in degrees per count (motor record ERES).
+
+    Returns
+    -------
+    int
+        The number of encoder counts per revolution.
+
+    Examples
+    --------
+    >>> get_encoder_counts_per_rev(0.0009)
+    400000
+    """
+    return round(360.0 / encoder_resolution)
 
 
 # TODO: Get this upstreamed to ophyd_async and remove it from here.
@@ -80,6 +102,18 @@ class RotationMotor(AsyncEpicsMotor):
     This class is a subclass of the AsyncEpicsMotor class and is used to represent
     a motor that can be used for rotation scans. It has additional attributes and
     methods that are specific to rotation scans.
+
+    Parameters
+    ----------
+    prefix : str
+        PV prefix of the motor record.
+    encoder_pos_at_zero : int, default 0
+        Encoder value (in counts) when the motor is at 0 degrees, used by
+        :meth:`get_encoder_value_from_angle`. Flyscans don't use it: the PandA
+        counter has an arbitrary offset, so they place triggers relative to a
+        reading of the counter instead.
+    name : str, optional
+        Name of the device.
     """
 
     def __init__(self, prefix: str, encoder_pos_at_zero: int = 0, name: str = ""):
@@ -98,14 +132,14 @@ class RotationMotor(AsyncEpicsMotor):
         Parameters
         ----------
         encoder_resolution : float
-            The resolution of the encoder in counts per degree.
+            The resolution of the encoder in degrees per count.
 
         Returns
         -------
         int
             The number of encoder counts per revolution.
         """
-        return int(360.0 * encoder_resolution)
+        return get_encoder_counts_per_rev(encoder_resolution)
 
     async def get_encoder_value_from_angle(self, angle: float) -> int:
         """Calculate the encoder value from an angle.

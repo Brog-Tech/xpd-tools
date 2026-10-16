@@ -10,8 +10,6 @@ from ophyd_async.core import (
 )
 from ophyd_async.fastcs.panda import CommonPandaBlocks, PandaPcompDirection
 
-from .motors import get_encoder_value_from_pos
-
 
 class SingleAxisFlyscanInfo(ConfinedModel):
     """Information for a single axis flyscan.
@@ -30,6 +28,14 @@ class SingleAxisFlyscanInfo(ConfinedModel):
         The step between pulses, in counts for position based scans, s for time based
     time_based : bool
         If true, equally spaced in time triggers. Otherwise, equally spaced in position
+    position_dataset_name : str
+        Name of the captured position dataset
+    position_dataset_units : str
+        Units of the captured position dataset
+    position_scale : float
+        Scale from encoder counts to the captured position
+    position_offset : float
+        Offset added to the scaled captured position
     """
 
     start: int
@@ -38,6 +44,10 @@ class SingleAxisFlyscanInfo(ConfinedModel):
     pulse_width: float | int
     pulse_step: float | int
     time_based: bool
+    position_dataset_name: str
+    position_dataset_units: str
+    position_scale: float = 1.0
+    position_offset: float = 0.0
 
 
 class SingleAxisFlyscanController(FlyerController[SingleAxisFlyscanInfo]):
@@ -49,9 +59,14 @@ class SingleAxisFlyscanController(FlyerController[SingleAxisFlyscanInfo]):
     async def prepare(self, value: SingleAxisFlyscanInfo):
         pcomp = self.panda.pcomp[1]
         pulse = self.panda.pulse[1]
+        calc = self.panda.calc[1]  # type: ignore
         coros = [
             pcomp.dir.set(value.direction),
             pcomp.start.set(value.start),
+            calc.out_dataset.set(value.position_dataset_name),
+            calc.out_units.set(value.position_dataset_units),
+            calc.out_scale.set(value.position_scale),
+            calc.out_offset.set(value.position_offset),
         ]
         if not value.time_based:
             coros.extend(
@@ -80,7 +95,7 @@ class SingleAxisFlyscanController(FlyerController[SingleAxisFlyscanInfo]):
         await asyncio.gather(*coros)
 
     async def kickoff(self) -> None:
-        await wait_for_value(self.panda.pcomp[1].active, True, timeout=1)
+        await wait_for_value(self.panda.pcomp[1].active, True, timeout=10)
 
     async def complete(self, timeout: float | None = None) -> None:
         await wait_for_value(self.panda.pcomp[1].active, False, timeout=timeout)
@@ -132,24 +147,30 @@ def construct_fly_info_models(
     stop_position: float,
     encoder_resolution: float,
     max_motor_velocity: float,
-    encoder_pos_at_zero: int = 0,
+    current_position: float,
+    current_enc_position: int,
     acq_time_overhead: float = 0.001,
     time_based: bool = False,
+    position_dataset_name: str = "Angle",
+    position_dataset_units: str = "deg",
 ) -> tuple[SingleAxisFlyscanInfo, FlyMotorInfo]:
     """Construct the fly info models for a single axis flyscan.
+
+    The PandA counts the encoder continuously from an arbitrary offset, so the
+    position compare start is placed relative to the encoder value
+    ``current_enc_position`` read while the motor was at ``current_position``.
+    The captured position is scaled to motor units, matching the motor position.
 
     Returns
     -------
     tuple[SingleAxisFlyscanInfo, FlyMotorInfo]
         The fly info models for a single axis flyscan.
     """
-    start_in_counts = get_encoder_value_from_pos(
-        start_position, encoder_resolution, encoder_pos_at_zero
-    )
-    stop_in_counts = get_encoder_value_from_pos(
-        stop_position, encoder_resolution, encoder_pos_at_zero
-    )
-    travel_counts = abs(stop_in_counts - start_in_counts)
+    dist_to_start = (start_position - current_position) / encoder_resolution
+    start_in_counts = round(current_enc_position + dist_to_start)
+    signed_travel_counts = round((stop_position - start_position) / encoder_resolution)
+
+    travel_counts = abs(signed_travel_counts)
     move_time = calculate_move_time_for_flyscan(
         abs(stop_position - start_position),
         max_motor_velocity,
@@ -176,18 +197,22 @@ def construct_fly_info_models(
         pulse_width = 1
         pulse_step = travel_counts // (num_pulses - 1)
     else:
-        pulse_width = max_exposure_time + acq_time_overhead
+        pulse_width = max_exposure_time
         pulse_step = move_time / num_pulses
 
     flyer_info = SingleAxisFlyscanInfo(
         start=start_in_counts,
         num_pulses=num_pulses,
         direction=PandaPcompDirection.POSITIVE
-        if stop_position > start_position
+        if signed_travel_counts > 0
         else PandaPcompDirection.NEGATIVE,
         pulse_width=pulse_width,
         pulse_step=pulse_step,
         time_based=time_based,
+        position_dataset_name=position_dataset_name,
+        position_dataset_units=position_dataset_units,
+        position_scale=encoder_resolution,
+        position_offset=current_position - current_enc_position * encoder_resolution,
     )
 
     motor_info = FlyMotorInfo(
