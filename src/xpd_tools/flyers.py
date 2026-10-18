@@ -10,8 +10,6 @@ from ophyd_async.core import (
 )
 from ophyd_async.fastcs.panda import CommonPandaBlocks, PandaPcompDirection
 
-from .motors import get_encoder_value_from_pos
-
 
 class SingleAxisFlyscanInfo(ConfinedModel):
     """Information for a single axis flyscan.
@@ -131,34 +129,6 @@ def calculate_move_time_for_flyscan(
     return max(fastest_possible_move_time, total_acq_time)
 
 
-def get_zero_encoder_position(
-    current_position: float,
-    start_position: float,
-    encoder_resolution: float,
-    current_encoder_value: int,
-):
-    """Calculate the encoder position corresponding to 0 degrees.
-
-    Parameters
-    ----------
-    current_position : float
-        The current position of the motor.
-    start_position : float
-        The start position of the flyscan.
-    encoder_resolution : float
-        The resolution of the encoder in counts per degree.
-    current_encoder_value : int
-        The current encoder value.
-
-    Returns
-    -------
-    int
-        The encoder position corresponding to 0 degrees.
-    """
-    dist_to_start_in_cts = (current_position - start_position) / encoder_resolution
-    return int(current_encoder_value - dist_to_start_in_cts)
-
-
 def construct_fly_info_models(
     num_pulses: int,
     max_exposure_time: float,
@@ -166,13 +136,18 @@ def construct_fly_info_models(
     stop_position: float,
     encoder_resolution: float,
     max_motor_velocity: float,
-    encoder_pos_at_zero: int = 0,
+    current_position: float,
+    current_encoder_value: int,
     acq_time_overhead: float = 0.001,
     time_based: bool = False,
     position_dataset_name: str = "Angle",
     position_dataset_units: str = "deg",
 ) -> tuple[SingleAxisFlyscanInfo, FlyMotorInfo]:
     """Construct the fly info models for a single axis flyscan.
+
+    The PandA encoder value and the EPICS motor position are read together, and the
+    position compare start is placed relative to that pair. The captured position
+    is scaled so that it matches the EPICS motor position.
 
     Parameters
     ----------
@@ -185,11 +160,13 @@ def construct_fly_info_models(
     stop_position : float
         The stop position of the flyscan.
     encoder_resolution : float
-        The resolution of the encoder in counts per degree.
+        The resolution of the encoder in degrees per count.
     max_motor_velocity : float
         The maximum velocity of the motor.
-    encoder_pos_at_zero : int, default 0
-        The encoder position corresponding to 0 degrees.
+    current_position : float
+        The EPICS motor position when ``current_encoder_value`` was read.
+    current_encoder_value : int
+        The PandA encoder value (position compare input) at ``current_position``.
     acq_time_overhead : float, default 0.001
         An overhead time per image to add to each acquisition.
     time_based : bool, default False
@@ -204,18 +181,15 @@ def construct_fly_info_models(
     tuple[SingleAxisFlyscanInfo, FlyMotorInfo]
         The fly info models for a single axis flyscan.
     """
-    # Get the start and stop positions in encoder counts,
-    # given the count value at zero.
-    start_in_counts = get_encoder_value_from_pos(
-        start_position, encoder_resolution, encoder_pos_at_zero
-    )
-    stop_in_counts = get_encoder_value_from_pos(
-        stop_position, encoder_resolution, encoder_pos_at_zero
+    # Get the start position in PandA encoder counts, relative to the encoder value
+    # read at the current motor position.
+    start_in_counts = current_encoder_value + round(
+        (start_position - current_position) / encoder_resolution
     )
 
     # Compute the number of encoder counts the motor will travel during the flyscan,
     # and the time it will take to complete the move.
-    travel_counts = abs(stop_in_counts - start_in_counts)
+    travel_counts = abs(round((stop_position - start_position) / encoder_resolution))
     move_time = calculate_move_time_for_flyscan(
         abs(stop_position - start_position),
         max_motor_velocity,
@@ -261,7 +235,7 @@ def construct_fly_info_models(
         position_dataset_name=position_dataset_name,
         position_dataset_units=position_dataset_units,
         position_scale=encoder_resolution,
-        position_offset=(-1 * encoder_pos_at_zero * encoder_resolution),
+        position_offset=current_position - current_encoder_value * encoder_resolution,
     )
 
     motor_info = FlyMotorInfo(

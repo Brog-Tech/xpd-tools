@@ -14,28 +14,6 @@ from ophyd_async.epics.core import epics_signal_r
 from ophyd_async.epics.motor import Motor as AsyncEpicsMotor
 
 
-def get_encoder_value_from_pos(
-    current_position: float, encoder_resolution: float, encoder_pos_at_zero: int
-) -> int:
-    """Calculate the encoder value from a motor position.
-
-    Parameters
-    ----------
-    current_position : float
-        The current position of the motor.
-    encoder_resolution : float
-        The resolution of the encoder in counts per degree.
-    encoder_pos_at_zero : int
-        The encoder position corresponding to 0 degrees.
-
-    Returns
-    -------
-    int
-        The encoder value corresponding to the given motor position.
-    """
-    return int(current_position / encoder_resolution + encoder_pos_at_zero)
-
-
 # TODO: Get this upstreamed to ophyd_async and remove it from here.
 # It is a general utility that is not specific to XPD.
 class VelocityRespectingMotorMock(DeviceMock[AsyncEpicsMotor]):
@@ -99,31 +77,11 @@ class RotationMotor(AsyncEpicsMotor):
         Parameters
         ----------
         encoder_resolution : float
-            The resolution of the encoder in counts per degree.
+            The resolution of the encoder in degrees per count.
 
         Returns
         -------
         int
             The number of encoder counts per revolution.
         """
-        return int(360.0 * encoder_resolution)
-
-    # async def get_encoder_value_from_angle(self, angle: float) -> int:
-    #     """Calculate the encoder value from an angle.
-
-    #     Parameters
-    #     ----------
-    #     angle : float
-    #         The angle in degrees.
-
-    #     Returns
-    #     -------
-    #     int
-    #         The encoder value corresponding to the given angle.
-    #     """
-    #     encoder_resolution = await self.encoder_resolution.get_value()
-    #     return get_encoder_value_from_pos(
-    #         current_position=angle,
-    #         encoder_resolution=encoder_resolution,
-    #         encoder_pos_at_zero=self.encoder_pos_at_zero,
-    #     )
+        return round(360.0 / encoder_resolution)
