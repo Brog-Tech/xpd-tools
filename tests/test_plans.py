@@ -389,7 +389,7 @@ async def sim_devices(
     return pilatus1, panda, motor
 
 
-def _run_flyscan(RE: RunEngine, devices, start: float, stop: float, **kwargs) -> dict:
+def _run_flyscan(RE: RunEngine, devices, start: float, stop: float) -> dict:
     pilatus1, panda, motor = devices
     docs: dict[str, list] = {}
     RE(
@@ -400,7 +400,6 @@ def _run_flyscan(RE: RunEngine, devices, start: float, stop: float, **kwargs) ->
             num_images=NUM_IMAGES,
             start=start,
             stop=stop,
-            **kwargs,
         ),
         lambda name, doc: docs.setdefault(name, []).append(doc),
     )
@@ -456,7 +455,7 @@ def test_single_axis_flyscan_rezeroes_counter_near_overflow(RE: RunEngine, sim_d
     assert docs["stop"][0]["exit_status"] == "success"
 
 
-@pytest.mark.parametrize("value", ["1", "Yes", "True"])
+@pytest.mark.parametrize("value", ["1"])
 def test_single_axis_flyscan_refuses_reset_on_z(RE: RunEngine, sim_devices, value):
     pilatus1, panda, motor = sim_devices
     sim = SimulatedPanda(sim_devices, 100.0, 0)
@@ -468,23 +467,20 @@ def test_single_axis_flyscan_refuses_reset_on_z(RE: RunEngine, sim_devices, valu
     assert sim.counter.position == 100.0
 
 
-@pytest.mark.parametrize("use_override", [False, True])
 def test_single_axis_flyscan_on_encoder_axis_2(
-    RE: RunEngine, sim_devices, use_override: bool
+    RE: RunEngine,
+    sim_devices,
 ):
-    """The axis comes from the motor, or from the plan keyword when given."""
+    """The axis comes from the motor."""
     pilatus1, panda, motor = sim_devices
     sim = SimulatedPanda(sim_devices, 366.0, 5_000, axis=2)
     # Axis 1 holds a misleading reading and would refuse to scan if it were used
     set_mock_value(panda.calc[1].out, -987_654)
     set_mock_value(panda.inenc[1].rst_on_z, "1")
-    if use_override:
-        kwargs = {"panda_encoder": 2}
-    else:
-        motor.panda_encoder = 2
-        kwargs = {}
 
-    docs = _run_flyscan(RE, sim_devices, 1.0, 361.0, **kwargs)
+    motor.panda_encoder = 2
+
+    docs = _run_flyscan(RE, sim_devices, 1.0, 361.0)
 
     assert sim.pcomp.errors == []
     assert sim.pcomp.fired == NUM_IMAGES

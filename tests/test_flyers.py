@@ -207,7 +207,6 @@ def test_construct_fly_info_models_raises(
     "current_position, current_encoder_value, start_position, stop_position,"
     " expected_start, expected_offset",
     [
-        # Values read on the beamline
         (183.0, 198353, 0.0, 360.0, -4980, 4.4823),
         (183.0, 198353, 1.0, 361.0, -3869, 4.4823),
         # Negative scan

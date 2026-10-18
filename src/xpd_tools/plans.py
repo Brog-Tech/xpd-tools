@@ -53,15 +53,8 @@ def single_axis_flyscan(
     stream_name: str = "tomo",
     acq_time_overhead: float = 0.001,
     time_based: bool = False,
-    panda_encoder: int | None = None,
 ):
     """Perform a single axis flyscan with the given detectors, PandABox, and motor.
-
-    ``start`` and ``stop`` may be any motor positions, in either direction. For
-    encoder axis ``n`` the PandA must count the encoder continuously
-    (``INENCn.RST_ON_Z`` off), position compare ``n`` must read ``CALCn.OUT``,
-    which increases with the motor, and ``PULSE1`` must be triggered by
-    ``PCOMPn.OUT``.
 
     Parameters
     ----------
@@ -83,12 +76,9 @@ def single_axis_flyscan(
         Overhead time for acquisition for each frame in seconds, by default 0.001
     flyscan_type : SingleAxisFlyscanType, default SingleAxisFlyscanType.POSITION_BASED
         Type of flyscan to perform, by default SingleAxisFlyscanType.POSITION_BASED
-    panda_encoder : int, optional
-        PandA encoder axis of the motor. Defaults to ``motor.panda_encoder``.
     """
     all_detectors = [*detectors, panda]
-    if panda_encoder is None:
-        panda_encoder = motor.panda_encoder
+    panda_encoder = motor.panda_encoder
     inenc = panda.inenc[panda_encoder]  # type: ignore
     calc = panda.calc[panda_encoder]  # type: ignore
 
@@ -96,16 +86,11 @@ def single_axis_flyscan(
     single_axis_panda_flyer = SingleAxisFlyableLogic(panda, panda_encoder).with_device()
     all_devices = [*all_detectors, single_axis_panda_flyer, motor]
 
-    #################
-    ### Clean this###
-    #################
-    # A reset on the index mark would make the counter jump mid-scan
     reset_on_z = yield from bps.rd(inenc.rst_on_z)
-    if str(reset_on_z).strip().lower() in {"1", "true", "yes", "on"}:
+    if reset_on_z == "1":
         raise ValueError(
             f"{panda.name} encoder resets on the index mark "
-            f"(INENC{panda_encoder}.RST_ON_Z is "
-            f"{reset_on_z!r}), so triggers would be lost when the scan crosses it. "
+            f"(INENC{panda_encoder}.RST_ON_Z is {reset_on_z!r})"
             f"Turn RST_ON_Z off."
         )
 
@@ -146,7 +131,6 @@ def single_axis_flyscan(
 
     flyer_info, motor_info = fly_info_models(current_panda_encoder_value)
 
-    # TODO We need to remove statically indexed inenc.
     # Keep a revolution clear of the limit for the run-up and run-down
     margin = motor.get_encoder_counts_per_rev(encoder_res)
     if not _fits_counter_range(flyer_info, current_panda_encoder_value, margin):
@@ -162,7 +146,6 @@ def single_axis_flyscan(
             current_panda_encoder_value,
         )
         yield from bps.mv(inenc.setp, 0)
-        # CALCn = -INENCn, so the counter now reads 0 at the current position
         current_panda_encoder_value = 0
         flyer_info, motor_info = fly_info_models(current_panda_encoder_value)
         if not _fits_counter_range(flyer_info, current_panda_encoder_value, margin):
@@ -180,8 +163,6 @@ def single_axis_flyscan(
 
     yield from bps.stage_all(*all_detectors)
 
-    # TODO: Come up with a way to set a timeout automatically based on the
-    # motor move to start position time.
     yield from bps.prepare(motor, motor_info, wait=True)
 
     # Configure position compare and arm the detectors only once the motor is at

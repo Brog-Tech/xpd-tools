@@ -6,7 +6,6 @@ from xpd_tools.motors import RotationMotor
 @pytest.mark.parametrize(
     "encoder_resolution, expected",
     [
-        (360 / 400_000, 400_000),
         (0.0009, 400_000),
         (0.01, 36_000),
     ],

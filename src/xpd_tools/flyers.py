@@ -59,7 +59,7 @@ class SingleAxisFlyableLogic(FlyableLogic[SingleAxisFlyscanInfo, None]):
         self.panda = panda
         self.pcomp = panda.pcomp[panda_encoder]
         self.calc = panda.calc[panda_encoder]  # type: ignore
-        self.pulse = panda.pulse[1]
+        self.pulse = panda.pulse[panda_encoder]
 
     async def on_prepare(self, value: SingleAxisFlyscanInfo):
         pcomp = self.pcomp

@@ -68,7 +68,7 @@ class RotationMotor(AsyncEpicsMotor):
         Name of the device.
     panda_encoder : int, default 1
         PandA encoder axis this motor's encoder is wired to. Flyscans use the
-        INENC, CALC and PCOMP blocks with this number.
+        INENC, CALC, PCOMP, PULSE blocks with this number.
     """
 
     def __init__(self, prefix: str, name: str = "", *, panda_encoder: int = 1):
