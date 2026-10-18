@@ -107,8 +107,8 @@ class InencBlock(Device):
 class HDFPandaWithCalc(HDFPanda):
     def __init__(self, prefix: str, path_provider: StaticPathProvider):
         super().__init__(prefix, path_provider)
-        self.calc = DeviceVector({1: CalcBlock()})
-        self.inenc = DeviceVector({1: InencBlock()})
+        self.calc = DeviceVector({1: CalcBlock(), 2: CalcBlock()})
+        self.inenc = DeviceVector({1: InencBlock(), 2: InencBlock()})
 
 
 @pytest.fixture
@@ -270,10 +270,17 @@ class SimulatedPanda:
     positions while PCAP is armed.
     """
 
-    def __init__(self, devices, initial_position: float, initial_counter: int):
+    def __init__(
+        self,
+        devices,
+        initial_position: float,
+        initial_counter: int,
+        axis: int = 1,
+    ):
+        self.axis = axis
         pilatus, panda, motor = devices
         self.panda = panda
-        self.position = panda.calc[1].out
+        self.position = panda.calc[axis].out
         self.hdf = pilatus.get_plugin("hdf", NDFileHDF5IO)
         self.counter = ContinuousCounter(
             ENCODER_RESOLUTION, initial_position, initial_counter
@@ -285,17 +292,17 @@ class SimulatedPanda:
 
         set_mock_value(motor.user_readback, initial_position)
         set_mock_value(self.position, self.counter.value)
-        set_mock_value(panda.inenc[1].rst_on_z, "0")
+        set_mock_value(panda.inenc[axis].rst_on_z, "0")
         set_mock_value(panda.data.directory_exists, 1)
         set_mock_value(
             panda.data.datasets,
             DatasetTable(name=["enc1"], dtype=[PandaHdf5DatasetType.FLOAT_64]),
         )
         set_mock_value(panda.pcap.active, False)
-        set_mock_value(panda.pcomp[1].active, False)
+        set_mock_value(panda.pcomp[axis].active, False)
         set_mock_value(panda.data.num_captured, 0)
 
-        pcomp = panda.pcomp[1]
+        pcomp = panda.pcomp[axis]
         callback_on_mock_put(pcomp.start, lambda v: setattr(self.pcomp, "start", v))
         callback_on_mock_put(pcomp.step, lambda v: setattr(self.pcomp, "step", v))
         callback_on_mock_put(pcomp.width, lambda v: setattr(self.pcomp, "width", v))
@@ -314,10 +321,10 @@ class SimulatedPanda:
         self.position_scaling: dict[str, float] = {}
         for key in ("out_scale", "out_offset"):
             callback_on_mock_put(
-                getattr(panda.calc[1], key),
+                getattr(panda.calc[axis], key),
                 lambda v, key=key: self.position_scaling.__setitem__(key, v),
             )
-        callback_on_mock_put(panda.inenc[1].setp, self._on_setpoint)
+        callback_on_mock_put(panda.inenc[axis].setp, self._on_setpoint)
 
         backend = _get_mock_signal_backend(motor.user_setpoint)
         self._original_motor_cb = backend._mock_put_callback
@@ -335,7 +342,7 @@ class SimulatedPanda:
             self.pcomp.enable(self.counter.value)
         else:
             self.pcomp.disable()
-        set_mock_value(self.panda.pcomp[1].active, value)
+        set_mock_value(self.panda.pcomp[self.axis].active, value)
 
     def _on_motor_setpoint(self, value: float):
         new_pulses = self.pcomp.observe(self.counter.move_to(value))
@@ -354,7 +361,7 @@ class SimulatedPanda:
             set_mock_value(self.panda.data.num_captured, self.captured)
             set_mock_value(self.hdf.num_captured, self.captured)
         if self.pcomp.done:
-            set_mock_value(self.panda.pcomp[1].active, False)
+            set_mock_value(self.panda.pcomp[self.axis].active, False)
 
 
 @pytest.fixture
@@ -382,7 +389,7 @@ async def sim_devices(
     return pilatus1, panda, motor
 
 
-def _run_flyscan(RE: RunEngine, devices, start: float, stop: float) -> dict:
+def _run_flyscan(RE: RunEngine, devices, start: float, stop: float, **kwargs) -> dict:
     pilatus1, panda, motor = devices
     docs: dict[str, list] = {}
     RE(
@@ -393,6 +400,7 @@ def _run_flyscan(RE: RunEngine, devices, start: float, stop: float) -> dict:
             num_images=NUM_IMAGES,
             start=start,
             stop=stop,
+            **kwargs,
         ),
         lambda name, doc: docs.setdefault(name, []).append(doc),
     )
@@ -458,3 +466,28 @@ def test_single_axis_flyscan_refuses_reset_on_z(RE: RunEngine, sim_devices, valu
         _run_flyscan(RE, sim_devices, 0.0, 360.0)
     # Fails before moving the motor
     assert sim.counter.position == 100.0
+
+
+@pytest.mark.parametrize("use_override", [False, True])
+def test_single_axis_flyscan_on_encoder_axis_2(
+    RE: RunEngine, sim_devices, use_override: bool
+):
+    """The axis comes from the motor, or from the plan keyword when given."""
+    pilatus1, panda, motor = sim_devices
+    sim = SimulatedPanda(sim_devices, 366.0, 5_000, axis=2)
+    # Axis 1 holds a misleading reading and would refuse to scan if it were used
+    set_mock_value(panda.calc[1].out, -987_654)
+    set_mock_value(panda.inenc[1].rst_on_z, "1")
+    if use_override:
+        kwargs = {"panda_encoder": 2}
+    else:
+        motor.panda_encoder = 2
+        kwargs = {}
+
+    docs = _run_flyscan(RE, sim_devices, 1.0, 361.0, **kwargs)
+
+    assert sim.pcomp.errors == []
+    assert sim.pcomp.fired == NUM_IMAGES
+    assert docs["stop"][0]["exit_status"] == "success"
+    position_at_first_trigger = 366.0 + (sim.pcomp.start - 5_000) * ENCODER_RESOLUTION
+    assert position_at_first_trigger == pytest.approx(1.0, abs=1e-3)
