@@ -43,15 +43,28 @@ class SingleAxisFlyscanInfo(ConfinedModel):
 
 
 class SingleAxisFlyableLogic(FlyableLogic[SingleAxisFlyscanInfo, None]):
-    """Controller for a single axis flyscan."""
+    """Controller for a single axis flyscan.
 
-    def __init__(self, panda: CommonPandaBlocks) -> None:
+    Parameters
+    ----------
+    panda : CommonPandaBlocks
+        The PandA producing the triggers.
+    panda_encoder : int, default 1
+        Encoder axis of the scanned motor: position compare and the position
+        calculation use the PCOMP and CALC blocks with this number. PULSE1 is
+        always used to drive the capture.
+    """
+
+    def __init__(self, panda: CommonPandaBlocks, panda_encoder: int = 1) -> None:
         self.panda = panda
+        self.pcomp = panda.pcomp[panda_encoder]
+        self.calc = panda.calc[panda_encoder]  # type: ignore
+        self.pulse = panda.pulse[1]
 
     async def on_prepare(self, value: SingleAxisFlyscanInfo):
-        pcomp = self.panda.pcomp[1]
-        pulse = self.panda.pulse[1]
-        calc = self.panda.calc[1]  # type: ignore
+        pcomp = self.pcomp
+        pulse = self.pulse
+        calc = self.calc
         coros = [
             pcomp.dir.set(value.direction),
             pcomp.start.set(value.start),
@@ -87,13 +100,13 @@ class SingleAxisFlyableLogic(FlyableLogic[SingleAxisFlyscanInfo, None]):
         await asyncio.gather(*coros)
 
     async def on_kickoff(self, ctx: None) -> None:
-        await wait_for_value(self.panda.pcomp[1].active, True, timeout=1)
+        await wait_for_value(self.pcomp.active, True, timeout=1)
 
     async def on_complete(self, ctx: None) -> None:
-        await wait_for_value(self.panda.pcomp[1].active, False, timeout=None)
+        await wait_for_value(self.pcomp.active, False, timeout=None)
 
     async def on_stop(self):
-        await wait_for_value(self.panda.pcomp[1].active, False, timeout=1)
+        await wait_for_value(self.pcomp.active, False, timeout=1)
 
 
 def calculate_move_time_for_flyscan(
