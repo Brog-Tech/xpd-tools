@@ -389,7 +389,9 @@ async def sim_devices(
     return pilatus1, panda, motor
 
 
-def _run_flyscan(RE: RunEngine, devices, start: float, stop: float) -> dict:
+def _run_flyscan(
+    RE: RunEngine, devices, start: float, stop: float, time_based: bool = False
+) -> dict:
     pilatus1, panda, motor = devices
     docs: dict[str, list] = {}
     RE(
@@ -400,6 +402,7 @@ def _run_flyscan(RE: RunEngine, devices, start: float, stop: float) -> dict:
             num_images=NUM_IMAGES,
             start=start,
             stop=stop,
+            time_based=time_based,
         ),
         lambda name, doc: docs.setdefault(name, []).append(doc),
     )
@@ -445,13 +448,46 @@ def test_single_axis_flyscan_any_angle(
 
 
 def test_single_axis_flyscan_rezeroes_counter_near_overflow(RE: RunEngine, sim_devices):
-    sim = SimulatedPanda(sim_devices, 100.0, 2**31 - 300_000)
+    # The scan end is 288,889 counts above the current counter
+    sim = SimulatedPanda(sim_devices, 100.0, 2**31 - 200_000)
 
     docs = _run_flyscan(RE, sim_devices, 0.0, 360.0)
 
     assert sim.setpoint_writes == [0]
     assert sim.pcomp.errors == []
     assert sim.pcomp.fired == NUM_IMAGES
+    assert docs["stop"][0]["exit_status"] == "success"
+
+
+def test_single_axis_flyscan_rezeroes_counter_for_long_run_down(
+    RE: RunEngine, sim_devices
+):
+    """The run-down is included even when it is longer than a revolution."""
+    pilatus1, panda, motor = sim_devices
+    # Gives a 400 degree run-down at 1000 deg/s
+    set_mock_value(motor.acceleration_time, 0.8)
+    # The scan ends 411,111 counts short of the limit, the run-down passes it
+    sim = SimulatedPanda(sim_devices, 100.0, 2**31 - 700_000)
+
+    docs = _run_flyscan(RE, sim_devices, 0.0, 360.0)
+
+    assert sim.setpoint_writes == [0]
+    assert sim.pcomp.errors == []
+    assert sim.pcomp.fired == NUM_IMAGES
+    assert docs["stop"][0]["exit_status"] == "success"
+
+
+def test_single_axis_flyscan_time_based_rezeroes_counter_near_overflow(
+    RE: RunEngine, sim_devices
+):
+    """Time based scans are checked by distance travelled, not pulse timing."""
+    # Ten revolutions, which pass the limit about halfway through
+    sim = SimulatedPanda(sim_devices, 100.0, 2**31 - 2_000_000)
+
+    docs = _run_flyscan(RE, sim_devices, 0.0, 3600.0, time_based=True)
+
+    assert sim.setpoint_writes == [0]
+    assert sim.pcomp.errors == []
     assert docs["stop"][0]["exit_status"] == "success"
 
 

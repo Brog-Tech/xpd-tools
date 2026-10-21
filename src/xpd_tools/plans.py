@@ -8,13 +8,12 @@ from ophyd_async.core import (
     TriggerInfo,
 )
 from ophyd_async.epics.adcore import AreaDetector
-from ophyd_async.fastcs.panda import HDFPanda, PandaPcompDirection
+from ophyd_async.fastcs.panda import HDFPanda
 
 from xpd_tools.detectors.utils import get_detector_acq_times
 
 from .flyers import (
     SingleAxisFlyableLogic,
-    SingleAxisFlyscanInfo,
     construct_fly_info_models,
 )
 from .motors import RotationMotor
@@ -26,20 +25,19 @@ PANDA_COUNTER_LIMIT = 2**31 - 1
 
 
 def _fits_counter_range(
-    flyer_info: SingleAxisFlyscanInfo, current_encoder_value: int, margin: int
+    current_encoder_value: int,
+    current_position: float,
+    encoder_resolution: float,
+    positions: tuple[float, ...],
 ) -> bool:
-    """Whether the scan keeps the PandA counter clear of its 32 bit limits."""
-    if flyer_info.time_based:
-        extent = 1
-    else:
-        extent = (flyer_info.num_pulses - 1) * int(flyer_info.pulse_step) + int(
-            flyer_info.pulse_width
-        )
-    sign = 1 if flyer_info.direction == PandaPcompDirection.POSITIVE else -1
-    last = flyer_info.start + sign * extent
+    """Ensure the PandA counter doesn't overflow."""
     return all(
-        abs(count) + margin <= PANDA_COUNTER_LIMIT
-        for count in (current_encoder_value, last)
+        abs(
+            current_encoder_value
+            + round((position - current_position) / encoder_resolution)
+        )
+        <= PANDA_COUNTER_LIMIT
+        for position in (current_position, *positions)
     )
 
 
@@ -101,6 +99,7 @@ def single_axis_flyscan(
     current_panda_encoder_value = round(current_panda_encoder_value)
 
     max_velocity = yield from bps.rd(motor.max_velocity)
+    acceleration_time = yield from bps.rd(motor.acceleration_time)
 
     acquisition_periods = yield from get_detector_acq_times(detectors)
     max_acq_period = max(acquisition_periods)
@@ -131,9 +130,17 @@ def single_axis_flyscan(
 
     flyer_info, motor_info = fly_info_models(current_panda_encoder_value)
 
-    # Keep a revolution clear of the limit for the run-up and run-down
-    margin = motor.get_encoder_counts_per_rev(encoder_res)
-    if not _fits_counter_range(flyer_info, current_panda_encoder_value, margin):
+    move_extremes = (
+        motor_info.ramp_up_start_pos(acceleration_time),
+        motor_info.ramp_down_end_pos(acceleration_time),
+    )
+
+    def fits_counter_range(current_encoder_value: int) -> bool:
+        return _fits_counter_range(
+            current_encoder_value, current_motor_pos, encoder_res, move_extremes
+        )
+
+    if not fits_counter_range(current_panda_encoder_value):
         # To refuse the scan instead of re-zeroing the counter, use this instead:
         # raise ValueError(
         #     f"PandA counter is {current_panda_encoder_value}, and the scan would "
@@ -148,7 +155,7 @@ def single_axis_flyscan(
         yield from bps.mv(inenc.setp, 0)
         current_panda_encoder_value = 0
         flyer_info, motor_info = fly_info_models(current_panda_encoder_value)
-        if not _fits_counter_range(flyer_info, current_panda_encoder_value, margin):
+        if not fits_counter_range(current_panda_encoder_value):
             raise ValueError(
                 f"Scan from {start} to {stop} is too long for the 32 bit PandA counter."
             )
