@@ -45,6 +45,11 @@ class SingleAxisFlyscanInfo(ConfinedModel):
 class SingleAxisFlyableLogic(FlyableLogic[SingleAxisFlyscanInfo, None]):
     """Controller for a single axis flyscan.
 
+    The PandA is wired with one chain per encoder axis, INENCn -> CALCn -> PCOMPn.
+    Every PCOMPn.OUT is ORed together into PULSE1, which alone drives the
+    detector TTL outputs and PCAP. Scanning another axis therefore only selects
+    which numbered blocks to program, with no rewiring of the PandA.
+
     Parameters
     ----------
     panda : CommonPandaBlocks
@@ -52,14 +57,14 @@ class SingleAxisFlyableLogic(FlyableLogic[SingleAxisFlyscanInfo, None]):
     panda_encoder : int, default 1
         Encoder axis of the scanned motor: position compare and the position
         calculation use the PCOMP and CALC blocks with this number. PULSE1 is
-        always used to drive the capture.
+        shared by all axes and always drives the capture.
     """
 
     def __init__(self, panda: CommonPandaBlocks, panda_encoder: int = 1) -> None:
         self.panda = panda
         self.pcomp = panda.pcomp[panda_encoder]
         self.calc = panda.calc[panda_encoder]  # type: ignore
-        self.pulse = panda.pulse[panda_encoder]
+        self.pulse = panda.pulse[1]
 
     async def on_prepare(self, value: SingleAxisFlyscanInfo):
         pcomp = self.pcomp
