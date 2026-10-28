@@ -104,6 +104,13 @@ class InencBlock(Device):
         super().__init__(name="inenc1")
 
 
+async def _add_pcomp_inp(panda: HDFPanda) -> None:
+    """Add the PCOMP1 input signal, which the flyer logic
+    selects but PcompBlock lacks."""
+    panda.pcomp[1].inp = soft_signal_rw(str)
+    await panda.pcomp[1].inp.connect(mock=True)
+
+
 class HDFPandaWithCalc(HDFPanda):
     def __init__(self, prefix: str, path_provider: StaticPathProvider):
         super().__init__(prefix, path_provider)
@@ -121,6 +128,8 @@ async def devices(
 
     async with init_devices(mock=True):
         panda = HDFPandaWithCalc("PANDA:", path_provider)
+    await _add_pcomp_inp(panda)
+    async with init_devices(mock=True):
         motor = RotationMotor("MOT:", name="rot_motor")
         pilatus1 = Pilatus4Detector(
             "DET1:",
@@ -299,10 +308,10 @@ class SimulatedPanda:
             DatasetTable(name=["enc1"], dtype=[PandaHdf5DatasetType.FLOAT_64]),
         )
         set_mock_value(panda.pcap.active, False)
-        set_mock_value(panda.pcomp[axis].active, False)
+        set_mock_value(panda.pcomp[1].active, False)
         set_mock_value(panda.data.num_captured, 0)
 
-        pcomp = panda.pcomp[axis]
+        pcomp = panda.pcomp[1]
         callback_on_mock_put(pcomp.start, lambda v: setattr(self.pcomp, "start", v))
         callback_on_mock_put(pcomp.step, lambda v: setattr(self.pcomp, "step", v))
         callback_on_mock_put(pcomp.width, lambda v: setattr(self.pcomp, "width", v))
@@ -342,7 +351,7 @@ class SimulatedPanda:
             self.pcomp.enable(self.counter.value)
         else:
             self.pcomp.disable()
-        set_mock_value(self.panda.pcomp[self.axis].active, value)
+        set_mock_value(self.panda.pcomp[1].active, value)
 
     def _on_motor_setpoint(self, value: float):
         new_pulses = self.pcomp.observe(self.counter.move_to(value))
@@ -361,7 +370,7 @@ class SimulatedPanda:
             set_mock_value(self.panda.data.num_captured, self.captured)
             set_mock_value(self.hdf.num_captured, self.captured)
         if self.pcomp.done:
-            set_mock_value(self.panda.pcomp[self.axis].active, False)
+            set_mock_value(self.panda.pcomp[1].active, False)
 
 
 @pytest.fixture
@@ -374,6 +383,8 @@ async def sim_devices(
     )
     async with init_devices(mock=True):
         panda = HDFPandaWithCalc("PANDA:", path_provider)
+    await _add_pcomp_inp(panda)
+    async with init_devices(mock=True):
         motor = RotationMotor("MOT:", name="rot_motor")
         pilatus1 = Pilatus4Detector(
             "DET1:",
