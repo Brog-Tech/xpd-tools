@@ -62,7 +62,8 @@ class SingleAxisFlyableLogic(FlyableLogic[SingleAxisFlyscanInfo, None]):
 
     def __init__(self, panda: CommonPandaBlocks, panda_encoder: int = 1) -> None:
         self.panda = panda
-        self.pcomp = panda.pcomp[panda_encoder]
+        self._panda_encoder = panda_encoder
+        self.pcomp = panda.pcomp[1]
         self.calc = panda.calc[panda_encoder]  # type: ignore
         self.pulse = panda.pulse[1]
 
@@ -77,6 +78,7 @@ class SingleAxisFlyableLogic(FlyableLogic[SingleAxisFlyscanInfo, None]):
             calc.out_units.set(value.position_dataset_units),
             calc.out_scale.set(value.position_scale),
             calc.out_offset.set(value.position_offset),
+            self.pcomp.inp.set(f"CALC{self._panda_encoder}.OUT"),
         ]
         if not value.time_based:
             coros.extend(
