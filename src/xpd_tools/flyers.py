@@ -78,7 +78,7 @@ class SingleAxisFlyableLogic(FlyableLogic[SingleAxisFlyscanInfo, None]):
             calc.out_units.set(value.position_dataset_units),
             calc.out_scale.set(value.position_scale),
             calc.out_offset.set(value.position_offset),
-            self.pcomp.inp.set(f"CALC{self._panda_encoder}.OUT"), # type: ignore
+            self.pcomp.inp.set(f"CALC{self._panda_encoder}.OUT"),  # type: ignore
         ]
         if not value.time_based:
             coros.extend(

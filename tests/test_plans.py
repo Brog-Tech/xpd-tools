@@ -108,7 +108,7 @@ async def _add_pcomp_inp(panda: HDFPanda) -> None:
     """Add the PCOMP1 input signal, which the flyer logic
     selects but PcompBlock lacks."""
     panda.pcomp[1].inp = soft_signal_rw(str)
-    await panda.pcomp[1].inp.connect(mock=True) # type: ignore
+    await panda.pcomp[1].inp.connect(mock=True)  # type: ignore
 
 
 class HDFPandaWithCalc(HDFPanda):
