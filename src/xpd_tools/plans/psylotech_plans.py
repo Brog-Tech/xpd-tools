@@ -1,10 +1,11 @@
 """Acquisition plans for the Psylotech load frame at XPD."""
 
+from collections.abc import Sequence
+
 import bluesky.plan_stubs as bps
 import bluesky.preprocessors as bpp
 from ophyd_async.epics.adcore import AreaDetector
 from ophyd_async.fastcs.panda import HDFPanda
-from collections.abc import Sequence
 
 from ..psylotech import Psylotech
 from .plans import single_axis_flyscan
