@@ -21,8 +21,8 @@ def go_to_load(
 
     Parameters
     ----------
-    load : PsylotechLoad
-        The load frame to move.
+    psylotech : Psylotech
+        The load frame, whose ``load`` is moved.
     target : float
         Load to move to. Tension is positive and compression negative.
     tolerance : float, optional
@@ -66,11 +66,9 @@ def psylotech_flyscan(
         Detectors to trigger during the scan.
     panda : HDFPanda
         PandA triggering the detectors and capturing the encoders.
-    rotation : PsylotechRotation
-        The rotation axis to fly.
-    load : PsylotechLoad, optional
-        If given, the load at the start of the scan is added to the run's
-        metadata as ``psylotech_load``.
+    psylo : Psylotech
+        The load frame, whose rotation axis (``rot``) is flown. Its current load is
+        added to the run's metadata as ``psylotech_load``.
     num_images, start, stop, stream_name, acq_time_overhead, time_based
         See :func:`xpd_tools.plans.single_axis_flyscan`.
     md : dict, optional
@@ -113,8 +111,13 @@ def load_series_flyscan(
 
     Parameters
     ----------
-    detectors, panda, rotation, load
+    detectors, panda
         See :func:`psylotech_flyscan`.
+    rotation : Psylotech
+        The load frame, whose rotation axis is flown at each load.
+    load : Psylotech
+        The load frame, whose load is moved. Normally the same object as
+        ``rotation``.
     loads : Sequence[float]
         Loads to go to, in order. Tension is positive and compression negative.
     num_images, start, stop
