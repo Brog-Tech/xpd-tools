@@ -208,4 +208,3 @@ with init_devices(mock=XPDTOOLS_RUNNING_IN_CI):
     )
 
     psylo = Psylotech("XF:28ID2-ES{Psylotech:1}", name="psylo")
-
