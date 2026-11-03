@@ -75,7 +75,11 @@ if ipython is not None and isinstance(ipython, TerminalInteractiveShell):
         ]
 
 
-path_provider = NSLS2PathProvider(RE.md, beamline_tla="xpd", beamline_tla_suffix="-new")
+path_provider = NSLS2PathProvider(
+    RE.md,  # type: ignore (nslsii types metadata_dict as dict; RE.md is a RedisJSONDict)
+    beamline_tla="xpd",
+    beamline_tla_suffix="-new",
+)
 
 with init_devices(mock=XPD_TOOLS_RUNNING_IN_CI):
     panda1 = HDFPanda("XF:28ID2-ES{PANDA:1}:", path_provider)
