@@ -29,7 +29,7 @@ bluesky-queueserver-api = ">=0.0.13,<0.0.14"
 bluesky-httpserver = ">=0.0.12,<0.0.13"
 
 [feature.qs.tasks]
-qs-backend = "start-re-manager --profile-dir=."
+qs-backend = "test -n \"$BS_PROFILE\" || (echo 'BS_PROFILE is not set, e.g. BS_PROFILE=xpdd' && exit 1) && start-re-manager --startup-script src/xpd_tools/profiles/$BS_PROFILE.py"
 qs-server = "uvicorn --host localhost --port 60610 bluesky_httpserver.server:app"
 
 [feature.terminal.dependencies]
@@ -63,6 +63,7 @@ inflection = ">=0.5.1,<0.6"
 pytest-timeout = ">=2.4.0,<3"
 tiled-server = ">=0.2.14,<0.3"
 python-build = ">=1.2.2,<2"
+pip = "*"
 
 [feature.dev.tasks]
 tests = "pytest --cov=src/xpd_tools --cov-report=term"

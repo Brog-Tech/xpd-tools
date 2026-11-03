@@ -43,7 +43,7 @@ jobs:
 
       - name: Install produced wheel
         run: |
-          pixi run --as-is -e dev pip install dist/*.whl --force-reinstall --no-deps
+          pixi run --as-is -e dev python -m pip install dist/*.whl --force-reinstall --no-deps
 
       - name: Verify installation
         run: |
