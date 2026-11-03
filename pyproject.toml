@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=61", "setuptools_scm[toml]>=7"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
 
 [project]
 name = "xpd-tools"
@@ -9,13 +9,12 @@ authors = [
 ]
 description = "Tools for NSLS-II XPD beamline"
 readme = "README.md"
-license.file = "LICENSE"
+license = "BSD-3-Clause"
 requires-python = ">=3.11,<3.14"
 classifiers = [
   "Development Status :: 1 - Planning",
   "Intended Audience :: Science/Research",
   "Intended Audience :: Developers",
-  "License :: OSI Approved :: BSD License",
   "Operating System :: OS Independent",
   "Programming Language :: Python",
   "Programming Language :: Python :: 3",
@@ -90,12 +89,24 @@ Changelog = "https://github.com/NSLS2/xpd-tools/releases"
 [project.optional-dependencies]
 profiles = ["pyside6>=6.9,<6.13", "qtpy>=2.4.3"]
 
-[tool.setuptools.package-data]
-"xpd_tools" = ["py.typed"]
-"xpd_tools.panda_configurations" = ["*.yaml"]
+[tool.hatch.version]
+source = "vcs"
 
-[tool.setuptools_scm]
-write_to = "src/xpd_tools/_version.py"
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build]
+artifacts = ["src/xpd_tools/_version.py"]
+
+[tool.hatch.version.raw-options]
+fallback_version = "0.0.0"
+local_scheme = "no-local-version"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/xpd_tools/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/xpd_tools"]
 
 [tool.pyright]
 typeCheckingMode = "standard"
