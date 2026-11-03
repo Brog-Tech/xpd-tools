@@ -54,7 +54,10 @@ else:
     from tiled.client import simple
 
     tiled_reading_client = tiled_writing_client = c = simple(
-        "/tmp/xpd_tools", api_key="xpd_tools", readable_storage="/tmp/xpd_tools"
+        # Tiled refuses API keys that are not alphanumeric.
+        "/tmp/xpd_tools",
+        api_key="xpdtools",
+        readable_storage="/tmp/xpd_tools",
     )
 
 # Setup writing to the database
