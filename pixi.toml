@@ -7,16 +7,18 @@ platforms = ["linux-64"]
 [dependencies]
 python = ">=3.11,<3.14"
 ipython = ">=9.16.1,<10"
-bluesky = ">=1.15.1"
 tiled-client = ">=0.2.14,<0.3"
 bluesky-tiled-plugins = ">=2.0.9,<3"
-nslsii = ">=0.11.9,<0.12"
 redis-json-dict = ">=0.2.2,<0.3"
 rich = ">=15.0.0,<16"
 scipy = ">=1.17.1,<2"
 
 [pypi-dependencies]
 xpd-tools = { path = ".", editable = true }
+# From PyPI, not conda-forge: their conda builds pull in conda epics-base (via
+# pyepics), a second EPICS base beside epicscorelibs that crashes Python at exit.
+bluesky = ">=1.15.1"
+nslsii = ">=0.11.9,<0.12"
 ophyd-async = { git = "https://github.com/bluesky/ophyd-async", rev = "main" }
 
 [feature.profile.dependencies]
