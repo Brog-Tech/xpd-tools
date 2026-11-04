@@ -1,3 +1,7 @@
+# /// script
+# requires-python = ">=3.13"
+# dependencies = []
+# ///
 """XPD Bluesky profile for the 28-ID-2 beamline at NSLS-II."""
 
 import os
@@ -26,6 +30,7 @@ from xpd_tools.detectors.pilatus4 import Pilatus4Detector
 from xpd_tools.detectors.qepro import QEPro
 from xpd_tools.motors import RotationMotor
 from xpd_tools.plans import single_axis_flyscan
+from xpd_tools.pumps import DDSSyringeAxis, UltraSyringePump
 from xpd_tools.utils import ProposalIDPrompt, initialize_run_engine
 
 XPD_TOOLS_RUNNING_IN_CI = (
@@ -83,5 +88,25 @@ path_provider = NSLS2PathProvider(
     beamline_tla_suffix="-new",
 )
 
+#
+# QEPro
+#
 with init_devices(mock=XPD_TOOLS_RUNNING_IN_CI):
     qepro = QEPro(prefix="XF:28ID2-ES{QEPro:Spec-1}:", name="qepro")
+
+#
+# Pumps
+#
+pump_prefix = "XF:28IDC-ES:1"
+with init_devices(mock=XPD_TOOLS_RUNNING_IN_CI):
+    phud1 = UltraSyringePump(prefix=pump_prefix + "{Pump:Syrng-Ultra:1}:", name="")
+    phud2 = UltraSyringePump(prefix=pump_prefix + "{Pump:Syrng-Ultra:2}:", name="")
+
+    dds1a = DDSSyringeAxis(prefix=pump_prefix + "{Pump:Syrng-DDS:1-Ax:A}", name="")
+    dds1b = DDSSyringeAxis(prefix=pump_prefix + "{Pump:Syrng-DDS:1-Ax:B}", name="")
+
+    dds2a = DDSSyringeAxis(prefix=pump_prefix + "{Pump:Syrng-DDS:2-Ax:A}", name="")
+    dds2b = DDSSyringeAxis(prefix=pump_prefix + "{Pump:Syrng-DDS:2-Ax:B}", name="")
+
+    dds3a = DDSSyringeAxis(prefix=pump_prefix + "{Pump:Syrng-DDS:3-Ax:A}", name="")
+    dds3b = DDSSyringeAxis(prefix=pump_prefix + "{Pump:Syrng-DDS:3-Ax:B}", name="")
