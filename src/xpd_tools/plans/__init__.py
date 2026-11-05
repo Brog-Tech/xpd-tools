@@ -1,7 +1,7 @@
 """Acquisition plans for XPD beamline at NSLS-II."""
 
 from .plans import PANDA_COUNTER_LIMIT, single_axis_flyscan
-from .psylotech_plans import go_to_load, psylotech_flyscan
+from .psylotech_plans import go_to_load, load_series_flyscan, psylotech_flyscan
 from .pump_plans import (
     clear_pumps,
     configure_infusion,
@@ -30,6 +30,7 @@ __all__ = [
     "enable_pumps",
     "go_to_load",
     "psylotech_flyscan",
+    "load_series_flyscan",
     "pump_session",
     "read_pump_metadata",
     "set_qepro_temperature",
