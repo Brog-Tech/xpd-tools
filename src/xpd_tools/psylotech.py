@@ -566,6 +566,10 @@ class PsylotechLoadLogic(MovableLogic[float]):
             self.probe_step.get_value(),
             self.max_step.get_value(),
         )
+        if not (0 < probe_step < float("inf") and 0 < max_step < float("inf")):
+            raise ValueError(
+                "probe_step and max_step must be finite and greater than zero."
+            )
         # Target first, so in_tolerance judges the new target before anything moves.
         await self.setpoint.set(new_position)
 
