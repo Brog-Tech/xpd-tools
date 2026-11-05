@@ -23,7 +23,7 @@ from xpd_tools.plans.pump_plans import (
     stop_pumps,
     wait_for_equilibrium,
 )
-from xpd_tools.pumps import DDSSyringeController, UltraSyringePump
+from xpd_tools.devices.pumps import DDSSyringeController, UltraSyringePump
 
 
 @dataclass(frozen=True)

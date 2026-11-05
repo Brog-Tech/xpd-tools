@@ -5,7 +5,7 @@ import math
 import pytest
 from ophyd_async.core import init_devices, set_mock_value
 
-from xpd_tools.pumps import (
+from xpd_tools.devices.pumps import (
     DDSSyringeController,
     UltraSyringePump,
     rate_limits,

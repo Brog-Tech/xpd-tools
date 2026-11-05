@@ -32,10 +32,10 @@ from rich import print as rprint
 from tiled.client import from_uri
 
 from xpd_tools.detectors.pilatus4 import Pilatus4Detector
-from xpd_tools.motors import RotationMotor
+from xpd_tools.utils.motors import RotationMotor
 from xpd_tools.plans import *
-from xpd_tools.psylotech import Psylotech
-from xpd_tools.utils import (
+from xpd_tools.devices.psylotech import Psylotech
+from xpd_tools.utils.session import (
     ProposalIDPrompt,
     initialize_run_engine,
     show_docs,

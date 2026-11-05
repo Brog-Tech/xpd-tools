@@ -17,7 +17,7 @@ from pathlib import Path
 import IPython
 from rich import print as rprint
 
-from .utils import print_version_info
+from .utils.session import print_version_info
 
 
 def start_profile():

@@ -29,7 +29,7 @@ from ophyd_async.fastcs.panda import (
 from panda_sim import ContinuousCounter, PcompSim
 
 from xpd_tools.detectors.pilatus4 import Pilatus4Detector
-from xpd_tools.motors import RotationMotor
+from xpd_tools.utils.motors import RotationMotor
 from xpd_tools.plans import single_axis_flyscan
 
 NUM_IMAGES = 11

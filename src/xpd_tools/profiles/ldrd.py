@@ -28,10 +28,10 @@ from tiled.client import from_uri
 from xpd_tools.detectors.panda import PandAConfiguration, switch_panda_configuration
 from xpd_tools.detectors.pilatus4 import Pilatus4Detector
 from xpd_tools.detectors.qepro import QEPro
-from xpd_tools.motors import RotationMotor
+from xpd_tools.utils.motors import RotationMotor
 from xpd_tools.plans import single_axis_flyscan
-from xpd_tools.pumps import DDSSyringeAxis, UltraSyringePump
-from xpd_tools.utils import ProposalIDPrompt, initialize_run_engine
+from xpd_tools.devices.pumps import DDSSyringeAxis, UltraSyringePump
+from xpd_tools.utils.session import ProposalIDPrompt, initialize_run_engine
 
 XPD_TOOLS_RUNNING_IN_CI = (
     os.environ.get("XPDTOOLS_RUNNING_IN_CI", "false").lower() == "true"

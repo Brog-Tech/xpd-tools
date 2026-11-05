@@ -12,11 +12,11 @@ from ophyd_async.fastcs.panda import HDFPanda
 
 from xpd_tools.detectors.utils import get_detector_acq_times
 
-from ..flyers import (
+from ..utils.flyers import (
     SingleAxisFlyableLogic,
     construct_fly_info_models,
 )
-from ..motors import FlyscanMotor
+from ..utils.motors import FlyscanMotor
 
 logger = logging.getLogger(__name__)
 

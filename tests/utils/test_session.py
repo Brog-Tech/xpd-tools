@@ -6,7 +6,7 @@ import pytest
 from pygments.token import Token
 from pytest_mock import MockerFixture
 
-from xpd_tools.utils import ProposalIDPrompt, start_beamtime
+from xpd_tools.utils.session import ProposalIDPrompt, start_beamtime
 
 
 def test_start_beamtime(
@@ -37,7 +37,7 @@ def test_start_beamtime(
         return sample_metadata
 
     mocker.patch(
-        "xpd_tools.utils.sync_experiment",
+        "xpd_tools.utils.session.sync_experiment",
         side_effect=fake_sync_experiment,
     )
 
@@ -68,7 +68,7 @@ def test_start_beamtime_no_proposal(
         return {}
 
     mocker.patch(
-        "xpd_tools.utils.sync_experiment",
+        "xpd_tools.utils.session.sync_experiment",
         side_effect=fake_sync_experiment,
     )
 

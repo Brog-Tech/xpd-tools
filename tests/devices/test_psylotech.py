@@ -30,7 +30,7 @@ from test_plans import (
 
 from xpd_tools.detectors.pilatus4 import Pilatus4Detector
 from xpd_tools.plans import go_to_load, psylotech_flyscan, single_axis_flyscan
-from xpd_tools.psylotech import (
+from xpd_tools.devices.psylotech import (
     ConnectionState,
     Psylotech,
     PsylotechAxial,

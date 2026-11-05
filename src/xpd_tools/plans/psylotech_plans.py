@@ -7,7 +7,7 @@ import bluesky.preprocessors as bpp
 from ophyd_async.epics.adcore import AreaDetector
 from ophyd_async.fastcs.panda import HDFPanda
 
-from ..psylotech import Psylotech
+from ..devices.psylotech import Psylotech
 from .plans import single_axis_flyscan
 
 

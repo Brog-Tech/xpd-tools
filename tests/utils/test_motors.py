@@ -1,6 +1,6 @@
 import pytest
 
-from xpd_tools.motors import RotationMotor
+from xpd_tools.utils.motors import RotationMotor
 
 
 @pytest.mark.parametrize(
