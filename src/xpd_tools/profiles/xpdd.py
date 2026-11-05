@@ -15,7 +15,7 @@ import bluesky.plans as bp
 from bluesky.callbacks.best_effort import BestEffortCallback
 from bluesky.run_engine import RunEngine, call_in_bluesky_event_loop
 from bluesky.utils import ProgressBarManager
-from bluesky_tiled_plugins import TiledWriter
+from bluesky_tiled_plugins import BufferingWrapper, TiledWriter
 from IPython.core.getipython import get_ipython
 from IPython.terminal.interactiveshell import TerminalInteractiveShell
 from nslsii.ophyd_async.providers import NSLS2PathProvider
@@ -67,7 +67,9 @@ XPDTOOLS_RUNNING_IN_CI = (
     os.environ.get("XPDTOOLS_RUNNING_IN_CI", "false").lower() == "true"
 )
 
-# Set the redis host explicitly
+TILED_BACKUP_ROOT = "/nsls2/data/xpd/xpdd/shared/config/bluesky/tiled_backup"
+TILED_LOCAL_BACKUP_ROOT = "/tmp/bluesky-docs"
+
 os.environ["REDIS_HOST"] = "xf28id2-xpdd-redis1.nsls2.bnl.gov"
 os.environ["OPHYD_ASYNC_PRESERVE_DETECTOR_STATE"] = "YES"
 
@@ -109,21 +111,27 @@ if not XPDTOOLS_RUNNING_IN_CI:
         "https://tiled.nsls2.bnl.gov",
         api_key=os.environ.get("TILED_BLUESKY_WRITING_API_KEY_XPDD", ""),
     )["xpdd"]["migration"]
+    tw = BufferingWrapper(
+        TiledWriter(
+            tiled_writing_client, backup_directory=f"{TILED_BACKUP_ROOT}/migration"
+        )
+    )
 else:
     # When testing, spin up an in-process tiled server, and use that instead
     from tiled.server.simple import SimpleTiledServer
 
-    tiled_server = SimpleTiledServer(
-        directory="/tmp/xpdtools",
-        readable_storage="/tmp/tiled_server",
+    tiled_reading_client = tiled_writing_client = c = simple(
+        # Tiled refuses API keys that are not alphanumeric.
+        "/tmp/xpd_tools",
         api_key="xpdtools",
+        readable_storage="/tmp/xpd_tools",
     )
-    tiled_writing_client = from_uri(tiled_server.uri)
-    tiled_reading_client = c = from_uri(tiled_server.uri)
-
-
-# Setup writing to the database
-tw = TiledWriter(tiled_writing_client)
+    tw = BufferingWrapper(
+        TiledWriter(
+            tiled_writing_client,
+            backup_directory=f"{TILED_LOCAL_BACKUP_ROOT}/migration",
+        )
+    )
 RE.subscribe(tw)
 
 # Setup BEC for live table, header, and live plots
@@ -142,10 +150,12 @@ if ipython is not None and isinstance(ipython, TerminalInteractiveShell):
             "migration"
         ]
 
-# The path provider will automatically generate paths in the format
-# /nsls2/data/xpd-new/proposals/<cycle>/<data_session>/assets/<detector_name>/<year>/<month>/<day>  # noqa: E501
-# Files will use UUID filenames to guarantee uniqueness.
-path_provider = NSLS2PathProvider(RE.md, beamline_tla="xpd", beamline_tla_suffix="-new")
+
+path_provider = NSLS2PathProvider(
+    RE.md,  # type: ignore (nslsii types metadata_dict as dict; RE.md is a RedisJSONDict)
+    beamline_tla="xpd",
+    beamline_tla_suffix="-new",
+)
 
 # Created before the devices are, so it keeps the name pilatus1 gives its plugins
 # (pilatus1-stats1) rather than a variable name, and is typed for the logic below
