@@ -229,8 +229,8 @@ class PsylotechRotationLogic(
 
     async def _fly_move(self, target: float, timeout: float) -> None:
         """Run the fly move with the actuators already powered, then power down."""
-        await self.check_move(target)
         try:
+            await self.check_move(target)
             await self.go_to(target, lambda: timeout)
         finally:
             await self.disable_actuators()
