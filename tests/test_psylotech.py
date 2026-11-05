@@ -9,6 +9,7 @@ from bluesky.run_engine import RunEngine
 from ophyd_async.core import (
     EnabledDisabled,
     EnableDisable,
+    FlyMotorInfo,
     StaticPathProvider,
     UUIDFilenameProvider,
     callback_on_mock_put,
@@ -106,6 +107,33 @@ async def test_move_refused_when_controller_disconnected(
     with pytest.raises(PsylotechError, match="reconnect"):
         await rotation.set(1.0)
     assert writes == []
+
+
+async def test_kickoff_refused_when_controller_disconnects_after_prepare(
+    psylo: Psylotech, rotation: PsylotechRotation
+):
+    writes = _record_actuator_writes(psylo)
+    await rotation.prepare(
+        FlyMotorInfo(start_position=0.0, end_position=10.0, time_for_move=10.0)
+    )
+    assert await psylo.actuator_enabled.get_value() == EnabledDisabled.ENABLED
+    set_mock_value(psylo.connected, ConnectionState.DISCONNECTED)
+    setpoint = await rotation.user_setpoint.get_value()
+    with pytest.raises(PsylotechError, match="reconnect"):
+        await rotation.kickoff()
+    assert await rotation.user_setpoint.get_value() == setpoint
+    assert writes == [EnableDisable.ENABLE, EnableDisable.DISABLE]
+
+
+async def test_unstage_powers_down_a_prepared_axis(
+    psylo: Psylotech, rotation: PsylotechRotation
+):
+    await rotation.prepare(
+        FlyMotorInfo(start_position=0.0, end_position=10.0, time_for_move=10.0)
+    )
+    assert await psylo.actuator_enabled.get_value() == EnabledDisabled.ENABLED
+    await rotation.unstage()
+    assert await psylo.actuator_enabled.get_value() == EnabledDisabled.DISABLED
 
 
 async def test_stage_does_not_touch_an_idle_axis(
@@ -261,8 +289,8 @@ def test_rotation_through_single_axis_flyscan(RE: RunEngine, flyscan_devices):
     )
 
     assert docs["stop"][0]["exit_status"] == "success"
-    # The run-up move and the fly move are each powered on, then off
-    assert writes == [EnableDisable.ENABLE, EnableDisable.DISABLE] * 2
+    # The actuators stay powered from prepare until the fly move completes
+    assert writes == [EnableDisable.ENABLE, EnableDisable.DISABLE]
     scale = asyncio.run(panda.calc[1].out_scale.get_value())
     assert scale == pytest.approx(360.0 / PsylotechRotation.ENCODER_COUNTS_PER_REV)
     # The jog rate was left at the fly speed

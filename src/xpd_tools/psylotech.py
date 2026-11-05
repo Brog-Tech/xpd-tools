@@ -113,13 +113,17 @@ class PsylotechMovableLogic(MovableLogic[float]):
     async def stop(self) -> None:
         """Stop the axis, but only if it is moving.
 
-        Stage and unstage also call this, so it must not touch an idle axis.
+        Stage and unstage also call this, so it must not touch an idle axis,
+        except to power down actuators a prepared fly scan left enabled.
         """
         setpoint, readback = await asyncio.gather(
             self.setpoint.get_value(), self.readback.get_value()
         )
         if not isclose(setpoint, readback, rel_tol=0.0, abs_tol=self.tolerance):
             await self.setpoint.set(readback)
+            await self.disable_actuators()
+        elif await self.actuator_enabled.get_value() == EnabledDisabled.ENABLED:
+            # Left powered by a fly scan that was prepared but never finished
             await self.disable_actuators()
 
     async def check_move(self, new_position: float) -> None:
@@ -208,24 +212,47 @@ class PsylotechRotationLogic(
         await asyncio.gather(
             self.check_move(ramp_up_start_pos), self.check_move(ramp_down_end_pos)
         )
-        # Move to the run-up start at maximum velocity
-        await self.velocity.set(max_velocity)
-        old_position = await self.readback.get_value()
-        timeout = await self.calculate_timeout(old_position, ramp_up_start_pos)
-        await self.move(ramp_up_start_pos, lambda: timeout)
-        # Set the velocity we will use for the fly scan
-        await self.velocity.set(value.speed)
+        # Move to the run-up start at maximum velocity. The actuators stay powered
+        # from here until the fly move is complete, so kickoff starts at once.
+        try:
+            await self.velocity.set(max_velocity)
+            old_position = await self.readback.get_value()
+            timeout = await self.calculate_timeout(old_position, ramp_up_start_pos)
+            await self.enable_actuators()
+            await self.go_to(ramp_up_start_pos, lambda: timeout)
+            # Set the velocity we will use for the fly scan
+            await self.velocity.set(value.speed)
+        except BaseException:
+            await self.disable_actuators()
+            raise
         return MotorFlyCtx(fly_info=value)
+
+    async def _fly_move(self, target: float, timeout: float) -> None:
+        """Run the fly move with the actuators already powered, then power down."""
+        await self.check_move(target)
+        try:
+            await self.go_to(target, lambda: timeout)
+        finally:
+            await self.disable_actuators()
 
     async def on_kickoff(self, ctx: MotorFlyCtx) -> MotorFlyCtx:
         """Begin moving the axis from the prepared position to the final position."""
         target = ctx.fly_info.ramp_down_end_pos(self.acceleration_time)
-        if ctx.fly_info.timeout == CALCULATE_TIMEOUT:
-            initial = await self.readback.get_value()
-            timeout = await self.calculate_timeout(initial, target)
-        else:
-            timeout = ctx.fly_info.timeout
-        ctx.status = AsyncStatus(self.move(target, lambda: timeout))
+        try:
+            # The fly move bypasses the move checks, so repeat them here: the
+            # controller may have disconnected since prepare succeeded.
+            await self.check_move(target)
+            if await self.actuator_enabled.get_value() != EnabledDisabled.ENABLED:
+                await self.enable_actuators()
+            if ctx.fly_info.timeout == CALCULATE_TIMEOUT:
+                initial = await self.readback.get_value()
+                timeout = await self.calculate_timeout(initial, target)
+            else:
+                timeout = ctx.fly_info.timeout
+        except BaseException:
+            await self.disable_actuators()
+            raise
+        ctx.status = AsyncStatus(self._fly_move(target, timeout))  # pyright: ignore[reportArgumentType]
         # Wait out the run-up so the axis is at constant velocity before kickoff()
         # returns, as ophyd_async's Motor does.
         await asyncio.sleep(self.acceleration_time)
@@ -342,7 +369,7 @@ class PsylotechRotation(_PsylotechAxis, StandardFlyable[FlyMotorInfo, MotorFlyCt
     #: Rotation encoder counts per revolution.
     ENCODER_COUNTS_PER_REV = 288000
     POSITION_TOLERANCE = 0.01
-    MAX_VELOCITY = 100.0
+    MAX_VELOCITY = 3600
     VELOCITY_UNITS = "deg/s"
     ACCELERATION_TIME = 0.5
 
@@ -551,9 +578,13 @@ class PsylotechLoadLogic(MovableLogic[float]):
             async with asyncio.timeout(timeout()):
                 while True:
                     if await self.in_tolerance.get_value():
+                        await self._check_load(await self.readback.get_value(), "Load")
                         previous = None
                         slipping = 0
                         if await self._stays_in_tolerance(settle_time):
+                            await self._check_load(
+                                await self.readback.get_value(), "Load"
+                            )
                             return
                         continue
 
