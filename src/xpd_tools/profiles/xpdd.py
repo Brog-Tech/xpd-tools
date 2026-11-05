@@ -179,7 +179,7 @@ with init_devices(mock=XPDTOOLS_RUNNING_IN_CI):
         "XF:28IDD-ES:2{Stg:Stack-Ax:Xfine}Mtr", name="amTopX"
     )
     amTopZ = AsyncEpicsMotor(  # noqa: N816
-        "XF:28IDD-ES:2{Stg:Stack-Ax:Xfine}Mtr", name="amTopZ"
+        "XF:28IDD-ES:2{Stg:Stack-Ax:Z}Mtr", name="amTopZ"
     )
 
     # Initialize the Pilatus4 detector object, with an HDF file writer and the
