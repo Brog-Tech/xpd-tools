@@ -118,7 +118,7 @@ if not XPDTOOLS_RUNNING_IN_CI:
     )
 else:
     # When testing, spin up an in-process tiled server, and use that instead
-    from tiled.server.simple import SimpleTiledServer
+    from tiled.client import simple
 
     tiled_reading_client = tiled_writing_client = c = simple(
         # Tiled refuses API keys that are not alphanumeric.
