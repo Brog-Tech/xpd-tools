@@ -312,8 +312,8 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/zict-3.0.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-4.1.2-pyh5ded981_0.conda
       - pypi: ./
-      - pypi: git+https://github.com/bluesky/ophyd-async?rev=main#0511ab20533629420195659e668ce4f0041f47bf
-      - pypi: git+https://github.com/jwlodek/nslsii?rev=xspress3-fix-for-ophyd-async-main#e06eb7e293c65ca9a88fd529caa2fb6f9bdd8d3f
+      - pypi: git+https://github.com/NSLS2/nslsii?rev=main#27000f0612a1de2f3a6eed830c8f0da57b73f17b
+      - pypi: git+https://github.com/bluesky/ophyd-async?rev=main#93620fbb289a1857a8203b78b5ba3b15e122d888
       - pypi: https://files.pythonhosted.org/packages/0c/98/ad65d39cab6cf071d09823aa525a0ff531cb9a4868130b9dfc44bb84828b/pymongo-4.19.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/1a/69/ee613f74085ca7103f79cd08d579c4f3177d1d26e5d3d9528d2d6536a707/nbformat-5.11.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/1c/8a/b34eb6d94c0b7ac75d278e6c67990c4be5311ea9d9f6e6c101bf48df3068/databroker-2.0.2-py2.py3-none-any.whl
@@ -805,8 +805,8 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/zict-3.0.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-4.1.2-pyh5ded981_0.conda
       - pypi: ./
-      - pypi: git+https://github.com/bluesky/ophyd-async?rev=main#0511ab20533629420195659e668ce4f0041f47bf
-      - pypi: git+https://github.com/jwlodek/nslsii?rev=xspress3-fix-for-ophyd-async-main#e06eb7e293c65ca9a88fd529caa2fb6f9bdd8d3f
+      - pypi: git+https://github.com/NSLS2/nslsii?rev=main#27000f0612a1de2f3a6eed830c8f0da57b73f17b
+      - pypi: git+https://github.com/bluesky/ophyd-async?rev=main#93620fbb289a1857a8203b78b5ba3b15e122d888
       - pypi: https://files.pythonhosted.org/packages/0c/98/ad65d39cab6cf071d09823aa525a0ff531cb9a4868130b9dfc44bb84828b/pymongo-4.19.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/1a/69/ee613f74085ca7103f79cd08d579c4f3177d1d26e5d3d9528d2d6536a707/nbformat-5.11.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/1c/8a/b34eb6d94c0b7ac75d278e6c67990c4be5311ea9d9f6e6c101bf48df3068/databroker-2.0.2-py2.py3-none-any.whl
@@ -1292,8 +1292,8 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/zict-3.0.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-4.1.2-pyh5ded981_0.conda
       - pypi: ./
-      - pypi: git+https://github.com/bluesky/ophyd-async?rev=main#0511ab20533629420195659e668ce4f0041f47bf
-      - pypi: git+https://github.com/jwlodek/nslsii?rev=xspress3-fix-for-ophyd-async-main#e06eb7e293c65ca9a88fd529caa2fb6f9bdd8d3f
+      - pypi: git+https://github.com/NSLS2/nslsii?rev=main#27000f0612a1de2f3a6eed830c8f0da57b73f17b
+      - pypi: git+https://github.com/bluesky/ophyd-async?rev=main#93620fbb289a1857a8203b78b5ba3b15e122d888
       - pypi: https://files.pythonhosted.org/packages/0e/99/e3d4e3b8feae70ea2546533dc348ae325884db2ddf88b423f4452cc21d46/pvxslibs-1.5.3-cp311-cp311-manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/1a/69/ee613f74085ca7103f79cd08d579c4f3177d1d26e5d3d9528d2d6536a707/nbformat-5.11.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/1b/dd/a9fe6a0a09512da23951c68bf36466aeecd89def3183dc095edbc807ddc5/pint-0.25.3-py3-none-any.whl
@@ -1786,8 +1786,8 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/zict-3.0.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-4.1.2-pyh5ded981_0.conda
       - pypi: ./
-      - pypi: git+https://github.com/bluesky/ophyd-async?rev=main#0511ab20533629420195659e668ce4f0041f47bf
-      - pypi: git+https://github.com/jwlodek/nslsii?rev=xspress3-fix-for-ophyd-async-main#e06eb7e293c65ca9a88fd529caa2fb6f9bdd8d3f
+      - pypi: git+https://github.com/NSLS2/nslsii?rev=main#27000f0612a1de2f3a6eed830c8f0da57b73f17b
+      - pypi: git+https://github.com/bluesky/ophyd-async?rev=main#93620fbb289a1857a8203b78b5ba3b15e122d888
       - pypi: https://files.pythonhosted.org/packages/1a/69/ee613f74085ca7103f79cd08d579c4f3177d1d26e5d3d9528d2d6536a707/nbformat-5.11.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/1c/8a/b34eb6d94c0b7ac75d278e6c67990c4be5311ea9d9f6e6c101bf48df3068/databroker-2.0.2-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/21/bd/4d1f59c9287ec5f93f9d879db3ac06785ba7c4d04a7120678d894e0c53d0/caproto-1.3.0-py3-none-any.whl
@@ -2286,8 +2286,8 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/zict-3.0.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-4.1.2-pyh5ded981_0.conda
       - pypi: ./
-      - pypi: git+https://github.com/bluesky/ophyd-async?rev=main#0511ab20533629420195659e668ce4f0041f47bf
-      - pypi: git+https://github.com/jwlodek/nslsii?rev=xspress3-fix-for-ophyd-async-main#e06eb7e293c65ca9a88fd529caa2fb6f9bdd8d3f
+      - pypi: git+https://github.com/NSLS2/nslsii?rev=main#27000f0612a1de2f3a6eed830c8f0da57b73f17b
+      - pypi: git+https://github.com/bluesky/ophyd-async?rev=main#93620fbb289a1857a8203b78b5ba3b15e122d888
       - pypi: https://files.pythonhosted.org/packages/0c/98/ad65d39cab6cf071d09823aa525a0ff531cb9a4868130b9dfc44bb84828b/pymongo-4.19.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/1a/69/ee613f74085ca7103f79cd08d579c4f3177d1d26e5d3d9528d2d6536a707/nbformat-5.11.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/1c/8a/b34eb6d94c0b7ac75d278e6c67990c4be5311ea9d9f6e6c101bf48df3068/databroker-2.0.2-py2.py3-none-any.whl
@@ -2592,8 +2592,8 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/zict-3.0.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-4.1.2-pyh5ded981_0.conda
       - pypi: ./
-      - pypi: git+https://github.com/bluesky/ophyd-async?rev=main#0511ab20533629420195659e668ce4f0041f47bf
-      - pypi: git+https://github.com/jwlodek/nslsii?rev=xspress3-fix-for-ophyd-async-main#e06eb7e293c65ca9a88fd529caa2fb6f9bdd8d3f
+      - pypi: git+https://github.com/NSLS2/nslsii?rev=main#27000f0612a1de2f3a6eed830c8f0da57b73f17b
+      - pypi: git+https://github.com/bluesky/ophyd-async?rev=main#93620fbb289a1857a8203b78b5ba3b15e122d888
       - pypi: https://files.pythonhosted.org/packages/01/f9/575c8d760eae1fc99651b7cc5efd96ad5379ca4d6b53750b0fb4fe983f34/imagesize-2.0.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/04/54/6f679c435d28e0a568d8e8a7c0a93a09010818634c3c3907fc98d8983770/roman_numerals-4.1.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/0a/7b/18a8c0bcec9182c05a0b3ec2a776bba4ead82750a55ff798e8d406dae604/sphinxcontrib_htmlhelp-2.1.0-py3-none-any.whl
@@ -3030,8 +3030,8 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/zict-3.0.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-4.1.2-pyh5ded981_0.conda
       - pypi: ./
-      - pypi: git+https://github.com/bluesky/ophyd-async?rev=main#0511ab20533629420195659e668ce4f0041f47bf
-      - pypi: git+https://github.com/jwlodek/nslsii?rev=xspress3-fix-for-ophyd-async-main#e06eb7e293c65ca9a88fd529caa2fb6f9bdd8d3f
+      - pypi: git+https://github.com/NSLS2/nslsii?rev=main#27000f0612a1de2f3a6eed830c8f0da57b73f17b
+      - pypi: git+https://github.com/bluesky/ophyd-async?rev=main#93620fbb289a1857a8203b78b5ba3b15e122d888
       - pypi: https://files.pythonhosted.org/packages/0c/98/ad65d39cab6cf071d09823aa525a0ff531cb9a4868130b9dfc44bb84828b/pymongo-4.19.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/1a/69/ee613f74085ca7103f79cd08d579c4f3177d1d26e5d3d9528d2d6536a707/nbformat-5.11.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/1c/8a/b34eb6d94c0b7ac75d278e6c67990c4be5311ea9d9f6e6c101bf48df3068/databroker-2.0.2-py2.py3-none-any.whl
@@ -12715,7 +12715,7 @@ packages:
   - bluesky-tiled-plugins>=2.0.13
   - bluesky>=1.15.1
   - ipython>=9.15.0
-  - nslsii @ git+https://github.com/jwlodek/nslsii@xspress3-fix-for-ophyd-async-main
+  - nslsii @ git+https://github.com/NSLS2/nslsii@main
   - ophyd-async[ca,pva] @ git+https://github.com/bluesky/ophyd-async@main
   - redis-json-dict>=0.2.2
   - rich>=15.0.0
@@ -12724,9 +12724,40 @@ packages:
   - pyside6>=6.9,<6.13 ; extra == 'profiles'
   - qtpy>=2.4.3 ; extra == 'profiles'
   requires_python: '>=3.11,<3.14'
-- pypi: git+https://github.com/bluesky/ophyd-async?rev=main#0511ab20533629420195659e668ce4f0041f47bf
+- pypi: git+https://github.com/NSLS2/nslsii?rev=main#27000f0612a1de2f3a6eed830c8f0da57b73f17b
+  name: nslsii
+  version: 0.12.2.dev10
+  requires_dist:
+  - appdirs
+  - bluesky-kafka>=0.8.0
+  - bluesky>=1.8.1
+  - caproto
+  - databroker
+  - h5py
+  - httpx
+  - ipython
+  - ipywidgets
+  - ldap3
+  - matplotlib
+  - msgpack-numpy
+  - msgpack>=1.0.0
+  - numpy
+  - opencv-python
+  - ophyd
+  - ophyd-async[ca]>=0.21.4
+  - packaging
+  - pillow
+  - psutil
+  - pycryptodome
+  - pyolog
+  - pyyaml
+  - redis
+  - redis-json-dict
+  - requests
+  requires_python: '>=3.11,<3.14'
+- pypi: git+https://github.com/bluesky/ophyd-async?rev=main#93620fbb289a1857a8203b78b5ba3b15e122d888
   name: ophyd-async
-  version: 0.21.4.dev23+g0511ab205
+  version: 0.21.5
   requires_dist:
   - numpy
   - bluesky>=1.13.1rc2
@@ -12747,37 +12778,6 @@ packages:
   - pyqt6<6.10 ; extra == 'demo'
   - pytest ; extra == 'demo'
   requires_python: '>=3.11'
-- pypi: git+https://github.com/jwlodek/nslsii?rev=xspress3-fix-for-ophyd-async-main#e06eb7e293c65ca9a88fd529caa2fb6f9bdd8d3f
-  name: nslsii
-  version: 0.11.11.dev62
-  requires_dist:
-  - appdirs
-  - bluesky-kafka>=0.8.0
-  - bluesky>=1.8.1
-  - caproto
-  - databroker
-  - h5py
-  - httpx
-  - ipython
-  - ipywidgets
-  - ldap3
-  - matplotlib
-  - msgpack-numpy
-  - msgpack>=1.0.0
-  - numpy
-  - opencv-python
-  - ophyd
-  - ophyd-async[ca]>=0.21.3
-  - packaging
-  - pillow
-  - psutil
-  - pycryptodome
-  - pyolog
-  - pyyaml
-  - redis
-  - redis-json-dict
-  - requests
-  requires_python: '>=3.11,<3.14'
 - pypi: https://files.pythonhosted.org/packages/01/f9/575c8d760eae1fc99651b7cc5efd96ad5379ca4d6b53750b0fb4fe983f34/imagesize-2.0.1-py3-none-any.whl
   name: imagesize
   version: 2.0.1
