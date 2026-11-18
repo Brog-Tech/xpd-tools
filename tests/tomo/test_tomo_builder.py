@@ -8,6 +8,7 @@ from tomo_rig import TomoRig
 from xpd_tools.tomo import (
     BuilderCancelledError,
     DetectorConfig,
+    build_detector_config_noninteractive,
     build_detector_configs,
     image_count_options,
     suggest_base_images,
@@ -117,6 +118,60 @@ def test_builds_configs_ready_for_the_flyscan(tomo_rig: TomoRig):
     assert (iris.detector, iris.ttl_out, iris.nproj) == (rig.iris, 3, 200)
     validate_detector_configs(configs)
     assert "RE(tomo_flyscan(configs, start=0, stop=360))" in shown
+
+
+def test_build_detector_config_noninteractive_accepts_per_detector_settings(
+    tomo_rig: TomoRig,
+):
+    configs = build_detector_config_noninteractive(
+        {"pilatus1": 0.1, "iris1": 0.05},
+        {"pilatus1": 100, "iris1": 200},
+        detectors={
+            "pilatus1": tomo_rig.pilatus,
+            "iris1": tomo_rig.iris,
+            "xs3": tomo_rig.xs3,
+        },
+    )
+    assert [
+        (config.name, config.exposure_time, config.nproj) for config in configs
+    ] == [
+        ("pilatus1", 0.1, 100),
+        ("iris1", 0.05, 200),
+    ]
+    validate_detector_configs(configs)
+
+
+def test_build_detector_config_noninteractive_accepts_shared_settings(
+    tomo_rig: TomoRig,
+):
+    configs = build_detector_config_noninteractive(
+        0.1,
+        100,
+        detectors={"pilatus1": tomo_rig.pilatus, "iris1": tomo_rig.iris},
+    )
+    assert [(config.exposure_time, config.nproj) for config in configs] == [
+        (0.1, 100),
+        (0.1, 100),
+    ]
+
+
+def test_build_detector_config_noninteractive_validates_mappings_and_detectors(
+    tomo_rig: TomoRig,
+):
+    with pytest.raises(ValueError, match="Unknown detectors"):
+        build_detector_config_noninteractive(
+            {"nope": 0.1},
+            100,
+            detectors={"pilatus1": tomo_rig.pilatus},
+        )
+    with pytest.raises(ValueError, match="No exposure time given"):
+        build_detector_config_noninteractive(
+            {"pilatus1": 0.1},
+            {"pilatus1": 100, "iris1": 200},
+            detectors={"pilatus1": tomo_rig.pilatus, "iris1": tomo_rig.iris},
+        )
+    with pytest.raises(ValueError, match="No detectors"):
+        build_detector_config_noninteractive(0.1, 100, detectors={})
 
 
 def test_confirmed_configs_are_saved_as_detconfig(tomo_rig: TomoRig):

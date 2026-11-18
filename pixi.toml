@@ -12,6 +12,7 @@ bluesky-tiled-plugins = ">=2.0.9,<3"
 redis-json-dict = ">=0.2.2,<0.3"
 rich = ">=15.0.0,<16"
 scipy = ">=1.17.1,<2"
+ipykernel = ">=7.4.0,<8"
 
 [pypi-dependencies]
 xpd-tools = { path = ".", editable = true }
@@ -20,6 +21,8 @@ xpd-tools = { path = ".", editable = true }
 bluesky = ">=1.15.1"
 nslsii = { git = "https://github.com/jwlodek/nslsii", rev = "xspress3-fix-for-ophyd-async-main" }
 ophyd-async = { git = "https://github.com/bluesky/ophyd-async", rev = "main" }
+hdf5plugin = ">=7.1.0, <8"
+papermill = ">=2.7.0, <3"
 
 [feature.profile.dependencies]
 

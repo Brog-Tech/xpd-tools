@@ -8,6 +8,9 @@ time and number of images, and returns a list of
     configs = build_detector_configs()
     RE(tomo_flyscan(configs, start=0, stop=180))
 
+:func:`build_detector_config_noninteractive` builds the same configs from
+explicit inputs without any prompts.
+
 :func:`image_count_options` and :func:`suggest_base_images` help choose image counts
 that work together, without any prompts. Only the standard library and packages the
 project already uses are needed; colours and emoji are switched off when the
@@ -34,6 +37,7 @@ from xpd_tools.tomo.utils import (
 __all__ = [
     "BuilderCancelledError",
     "ImageCountOption",
+    "build_detector_config_noninteractive",
     "build_detector_configs",
     "discover_detectors",
     "divisors",
@@ -549,6 +553,80 @@ def build_detector_configs(
         style.good(f"\n{style.icon('✅ ', '')}Ready. {saved}Run the flyscan:")
         + f"\n    RE(tomo_flyscan({name}, start={start:g}, stop={stop:g}))\n"
     )
+    return configs
+
+
+def build_detector_config_noninteractive(
+    exposure_time: float | Mapping[str, float],
+    nproj: int | Mapping[str, int],
+    *,
+    detectors: Mapping[str, TomoDetector] | None = None,
+) -> list[DetectorConfig]:
+    """Build the detector configs for :func:`tomo_flyscan` without any prompts.
+
+    The non-interactive counterpart of :func:`build_detector_configs`. Every
+    detector's TTL output defaults to the one it is wired to, and the finished
+    configs are validated as a whole before they are returned.
+
+    Parameters
+    ----------
+    exposure_time : float | Mapping[str, float]
+        The exposure time of each frame, in seconds. A number applies to every
+        detector; a mapping gives it by detector name.
+    nproj : int | Mapping[str, int]
+        The number of projections. A number applies to every detector; a mapping
+        gives it by detector name.
+    detectors : Mapping[str, TomoDetector] | None, default None
+        The detectors to use, by name. None uses all those found in the IPython
+        namespace. If either argument is a mapping, only the detectors named in it
+        are used.
+
+    Returns
+    -------
+    list[DetectorConfig]
+        One config per detector, to pass as ``detector_configs``.
+
+    Raises
+    ------
+    ValueError
+        If no detectors are found, a name is unknown or missing from a mapping, or
+        the configs are not valid together.
+
+    Examples
+    --------
+    >>> configs = build_detector_config_noninteractive(0.1, 1800)  # doctest: +SKIP
+    >>> RE(tomo_flyscan(configs, start=0, stop=180))  # doctest: +SKIP
+    """
+    available = dict(detectors) if detectors is not None else discover_detectors()
+    if not available:
+        raise ValueError(
+            "No detectors found in the IPython namespace. Pass detectors={name: det}."
+        )
+    mappings = [m for m in (exposure_time, nproj) if isinstance(m, Mapping)]
+    if mappings:
+        names = list(dict.fromkeys(name for m in mappings for name in m))
+        unknown = [n for n in names if n not in available]
+        if unknown:
+            raise ValueError(f"Unknown detectors: {', '.join(unknown)}.")
+        available = {n: available[n] for n in names}
+
+    def pick(value: Any, name: str, what: str) -> Any:
+        if not isinstance(value, Mapping):
+            return value
+        if name not in value:
+            raise ValueError(f"No {what} given for detector {name}.")
+        return value[name]
+
+    configs = [
+        DetectorConfig(
+            detector=det,
+            ttl_out=default_ttl_out(det) or 0,
+            exposure_time=pick(exposure_time, name, "exposure time"),
+            nproj=pick(nproj, name, "number of projections"),
+        )
+        for name, det in available.items()
+    ]
+    validate_detector_configs(configs)
     return configs
 
 

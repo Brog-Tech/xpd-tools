@@ -2,6 +2,7 @@
 
 from .builder import (
     BuilderCancelledError,
+    build_detector_config_noninteractive,
     build_detector_configs,
     image_count_options,
     print_image_count_options,
@@ -38,6 +39,7 @@ __all__ = [
     "ExposureTime",
     "LastDarkFlatUIDTracker",
     "TriggerRouting",
+    "build_detector_config_noninteractive",
     "build_detector_configs",
     "clear_last_dark_flat",
     "image_count_options",

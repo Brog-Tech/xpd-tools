@@ -26,6 +26,8 @@ from ophyd_async.core import (
     init_devices,
 )
 from ophyd_async.epics.adcore import ADWriterFactory, NDStatsIO, PluginSignalDataLogic
+
+# from ophyd_async.epics.adcore._data_logic import ADHDFDataLogic
 from ophyd_async.epics.adkinetix import KinetixDetector
 from ophyd_async.epics.motor import Motor as AsyncEpicsMotor
 from ophyd_async.fastcs.panda import HDFPanda
@@ -33,6 +35,7 @@ from ophyd_async.plan_stubs import retrieve_settings, store_settings
 from rich import print as rprint
 from tiled.client import from_uri
 
+from xpd_tools.detectors.dexela import DexelaDetector
 from xpd_tools.detectors.pilatus4 import Pilatus4Detector
 from xpd_tools.motors import RotationMotor
 from xpd_tools.plans import *
@@ -51,19 +54,16 @@ def start_beamtime(proposal_id: int, verbose: bool = True) -> None:
     """Start a beamtime for the given proposal ID."""
     md = sync_experiment(proposal_id, "XPD", redis_ssl=True)
 
+    rprint(f"Started beamtime for proposal ID [bold][blue]{proposal_id}[/blue][/bold].")
     rprint(
-        f"Started beamtime for proposal ID [bold][blue]{proposal_id}[/blue][/bold].\n"
-    )
-    rprint(
-        "Current time: [italic]"
-        f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}[/italic]\n"
+        f"Current time: [italic]{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}[/italic]"
     )
     proposal_md = md.get("proposal", {})
     if proposal_md and verbose:
-        rprint(f"Proposal title: [italic]{proposal_md['title']}[/italic]\n")
+        rprint(f"Proposal title: [italic]{proposal_md['title']}[/italic]")
         rprint(
             f"Proposal type: [italic]{proposal_md['type']}[/italic], "
-            f"Proposal PI: [italic]{proposal_md['pi_name']}[/italic]\n"
+            f"Proposal PI: [italic]{proposal_md['pi_name']}[/italic]"
         )
 
 
@@ -162,13 +162,90 @@ path_provider = NSLS2PathProvider(
     base_data_dir=PurePosixPath("/nsls2/data/xpd-new/proposals"),
 )
 
+
+########################################################################################
+########################################################################################
+# DETECTORS #######################################
+########################################################################################
+########################################################################################
 # Created before the devices are, so it keeps the name pilatus1 gives its plugins
 # (pilatus1-stats1) rather than a variable name, and is typed for the logic below
 pilatus1_stats1 = NDStatsIO("XF:28ID2-ES{Pilatus4-Det:1}Stats1:")
+iris1_stats1 = NDStatsIO("XF:28IDD-ES{Iris-Det:1}Stats1:")
+dexela1_stats1 = NDStatsIO("XF:28IDD-ES:2{Det:DEX}Stats1:")
 
 with init_devices(mock=XPDTOOLS_RUNNING_IN_CI):
     # Create a PandABox ophyd object
     panda1 = HDFPanda("XF:28ID2-ES{PANDA:1}:", path_provider)
+
+    # Initialize the Pilatus4 detector object, with an
+    # HDF file writer and the stats plugin
+    pilatus1 = Pilatus4Detector(
+        "XF:28ID2-ES{Pilatus4-Det:1}",
+        ADWriterFactory.hdf(path_provider),
+        plugins={"stats1": pilatus1_stats1},
+    )
+    # Tell the detector to include stats plugin total reading in step scans
+    pilatus1.add_detector_logics(
+        PluginSignalDataLogic(pilatus1.driver, pilatus1_stats1.total)
+    )
+    # Fly-scan Pilatus  no stats plugin / data logic (practical at ~450 Hz)
+    # TODO: Remove this once we get new ophyd-async release. Flyscan will auto-disable
+    # stepscan only data logic
+    pilatus1_fly = Pilatus4Detector(
+        "XF:28ID2-ES{Pilatus4-Det:1}", ADWriterFactory.hdf(path_provider)
+    )
+    pilatus1_fly.set_name("pilatus1")  # reuse assets/pilatus1/ per DE
+
+    # Initialize the Dexela detector object,
+    # with an HDF file writer and the stats plugin
+    dexela1 = DexelaDetector(
+        "XF:28IDD-ES:2{Det:DEX}",
+        ADWriterFactory.hdf(path_provider),
+        plugins={"stats1": dexela1_stats1},
+    )
+    # Tell the detector to include stats plugin total reading in step scans
+    dexela1.add_detector_logics(
+        PluginSignalDataLogic(dexela1.driver, dexela1_stats1.total)
+    )
+    # Fly-scan Pilatus  no stats plugin / data logic (practical at ~450 Hz)
+    # TODO: Remove this once we get new ophyd-async release. Flyscan will auto-disable
+    # stepscan only data logic
+    dexela1_fly = DexelaDetector(
+        "XF:28IDD-ES:2{Det:DEX}", ADWriterFactory.hdf(path_provider)
+    )
+    dexela1_fly.set_name("dexela1")  # reuse assets/pilatus1/ per DE
+
+    iris1 = KinetixDetector(
+        "XF:28IDD-ES{Iris-Det:1}",
+        ADWriterFactory.hdf(path_provider),
+        plugins={"stats1": iris1_stats1},
+    )
+    iris1.add_detector_logics(PluginSignalDataLogic(iris1.driver, iris1_stats1.total))
+    # TODO: Remove this once we get new ophyd-async release. Flyscan will auto-disable
+    # stepscan only data logic
+    iris1_fly = KinetixDetector(
+        "XF:28IDD-ES{Iris-Det:1}", ADWriterFactory.hdf(path_provider)
+    )
+    iris1_fly.set_name("iris1")  #
+
+    # Xspress3 fluorescence detector (prefix and channels from xpdDacq)
+    xs3 = Xspress3Detector(
+        "XF:28ID2-ES{Xsp:1}:",
+        Xspress3HDFWriterFactory(path_provider, hinted_streams=[]),
+        channel_numbers=(1,),
+        mca_roi_numbers=(1,),
+        name="xspress3-1",
+    )
+
+
+########################################################################################
+########################################################################################
+# MOTORS ##########################################
+########################################################################################
+########################################################################################
+with init_devices(mock=XPDTOOLS_RUNNING_IN_CI):
+    # psylo = Psylotech("XF:28ID2-ES{Psylotech:1}", name="psylo")
 
     # Create the rotation motor ophyd object for flyscanning
     # amPhi = RotationMotor(  # noqa: N816
@@ -197,43 +274,21 @@ with init_devices(mock=XPDTOOLS_RUNNING_IN_CI):
         "XF:28IDD-ES:2{Stg:Stack-Ax:Z}Mtr", name="amTopZ"
     )
 
-    # Initialize the Pilatus4 detector object, with an HDF file writer and the
-    # stats plugin
-    pilatus1 = Pilatus4Detector(
-        "XF:28ID2-ES{Pilatus4-Det:1}",
-        ADWriterFactory.hdf(path_provider),
-        plugins={"stats1": pilatus1_stats1},
-    )
-    # Tell the detector to include stats plugin total reading in step scans
-    pilatus1.add_detector_logics(
-        PluginSignalDataLogic(pilatus1.driver, pilatus1_stats1.total)
-    )
-
-    # Fly-scan Pilatus  no stats plugin / data logic (practical at ~450 Hz)
-    # TODO: Remove this once we get new ophyd-async release. Flyscan will auto-disable
-    # stepscan only data logic
-    pilatus1_fly = Pilatus4Detector(
-        "XF:28ID2-ES{Pilatus4-Det:1}", ADWriterFactory.hdf(path_provider)
-    )
-    pilatus1_fly.set_name("pilatus1")  # reuse assets/pilatus1/ per DE
-
-    iris1 = KinetixDetector(
-        "XF:28IDD-ES{Iris-Det:1}",
-        ADWriterFactory.hdf(path_provider),
-    )
-
-    # psylo = Psylotech("XF:28ID2-ES{Psylotech:1}", name="psylo")
-
-    # Xspress3 fluorescence detector (prefix and channels from xpdDacq)
-    xs3 = Xspress3Detector(
-        "XF:28ID2-ES{Xsp:1}:",
-        Xspress3HDFWriterFactory(path_provider),
-        channel_numbers=(1,),
-        mca_roi_numbers=(1,),
-        name="xspress3-1",
-    )
 
 with init_devices(mock=True):
     # TODO(XPDD): Get shutter PVs for the tomo plans
     fe_shutter = PPSShutter("TEST{Sh:FE}", name="fe_shutter")
     photon_shutter = Shutter("TEST{Sh:sum}", name="photon_shutter")
+
+
+# # Don't hint the Pilatus image array: BEC would add an empty first plot row for it
+# for _det in (pilatus1, pilatus1_fly, iris1, iris1_fly):
+#     for _dl in _det._data_logics:
+#         if isinstance(_dl, ADHDFDataLogic):
+#             _dl.get_hinted_fields = lambda name: []
+
+
+# for _det in (pilatus1, pilatus1_fly, iris1, iris1_fly):
+#     for _dl in _det._data_logics:
+#         if isinstance(_dl, ADHDFDataLogic):
+#             _dl.get_hinted_fields = lambda name: []
