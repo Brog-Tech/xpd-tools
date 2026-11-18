@@ -17,6 +17,7 @@ from pydantic import (
     model_validator,
 )
 
+from xpd_tools.detectors.dexela import DexelaDetector
 from xpd_tools.detectors.pilatus4 import Pilatus4Detector
 from xpd_tools.flyers import (
     PANDA_DIV_BLOCKS,
@@ -28,10 +29,10 @@ from xpd_tools.flyers import (
 from xpd_tools.utils import get_obj_from_ipython_ns
 
 #: Detectors that can take tomography projections.
-TomoDetector = Pilatus4Detector | KinetixDetector | Xspress3Detector
+TomoDetector = Pilatus4Detector | KinetixDetector | Xspress3Detector | DexelaDetector
 
 #: Detectors that take images, and so need darks and flats.
-ImagingDetector = Pilatus4Detector | KinetixDetector
+ImagingDetector = Pilatus4Detector | KinetixDetector | DexelaDetector
 
 #: An exposure time in seconds: one number for every detector, or a mapping that
 #: gives every detector its own, keyed by detector or by its ``.name``.

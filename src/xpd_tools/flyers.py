@@ -16,10 +16,11 @@ from ophyd_async.fastcs.panda import CommonPandaBlocks, PandaPcompDirection
 from pydantic import model_validator
 
 from xpd_tools.detectors.pilatus4 import Pilatus4Detector
+from xpd_tools.detectors.dexela import DexelaDetector
 
 #: PandA TTL outputs wired to detectors (``MultiTrigMultiDetV1.yaml``). TTL1 is the
 #: Pilatus, TTL2 the Xspress3 and TTL3 the Kinetix (iris).
-PANDA_TTL_OUTPUTS = (1, 2, 3)
+PANDA_TTL_OUTPUTS = (1, 2, 3, 4)
 
 #: PandA pulse dividers (DIV blocks) available to slow detectors' triggers.
 PANDA_DIV_BLOCKS = (1, 2)
@@ -33,6 +34,7 @@ DEFAULT_TTL_OUT: dict[type, int] = {
     Pilatus4Detector: 1,
     Xspress3Detector: 2,
     KinetixDetector: 3,
+    DexelaDetector: 4,
 }
 
 

@@ -9,7 +9,7 @@ import os
 os.environ.pop("PYEPICS_LIBCA", None)
 
 from datetime import datetime
-from pathlib import PurePosixPath
+from pathlib import PurePosixPath, PureWindowsPath
 
 import bluesky.plan_stubs as bps
 import bluesky.plans as bp
@@ -162,6 +162,13 @@ path_provider = NSLS2PathProvider(
     base_data_dir=PurePosixPath("/nsls2/data/xpd-new/proposals"),
 )
 
+dexela1_path_provider = NSLS2PathProvider(
+    RE.md,  # type: ignore (nslsii types metadata_dict as dict; RE.md is a RedisJSONDict)
+    base_data_dir=PurePosixPath("/nsls2/data/xpd-new/proposals"),
+    base_write_dir=PureWindowsPath("Z:\\proposals"),
+    granularity="year"
+)
+
 
 ########################################################################################
 ########################################################################################
@@ -201,7 +208,7 @@ with init_devices(mock=XPDTOOLS_RUNNING_IN_CI):
     # with an HDF file writer and the stats plugin
     dexela1 = DexelaDetector(
         "XF:28IDD-ES:2{Det:DEX}",
-        ADWriterFactory.hdf(path_provider),
+        ADWriterFactory.hdf(dexela1_path_provider),
         plugins={"stats1": dexela1_stats1},
     )
     # Tell the detector to include stats plugin total reading in step scans
@@ -212,7 +219,7 @@ with init_devices(mock=XPDTOOLS_RUNNING_IN_CI):
     # TODO: Remove this once we get new ophyd-async release. Flyscan will auto-disable
     # stepscan only data logic
     dexela1_fly = DexelaDetector(
-        "XF:28IDD-ES:2{Det:DEX}", ADWriterFactory.hdf(path_provider)
+        "XF:28IDD-ES:2{Det:DEX}", ADWriterFactory.hdf(dexela1_path_provider)
     )
     dexela1_fly.set_name("dexela1")  # reuse assets/pilatus1/ per DE
 
