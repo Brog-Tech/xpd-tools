@@ -14,7 +14,7 @@ from pathlib import PurePosixPath
 import bluesky.plan_stubs as bps
 import bluesky.plans as bp
 from bluesky.callbacks.best_effort import BestEffortCallback
-from bluesky.run_engine import RunEngine, call_in_bluesky_event_loop
+from bluesky.run_engine import RunEngine, autoawait_in_bluesky_event_loop
 from bluesky.utils import ProgressBarManager
 from bluesky_tiled_plugins import BufferingWrapper, TiledWriter
 from IPython.core.getipython import get_ipython
@@ -83,6 +83,7 @@ rprint("\n[bold][blue]Starting the XPDD profile collection...[/blue][/bold]")
 # Create our RunEngine instance
 RE: RunEngine = initialize_run_engine()
 rprint("Initialzied RunEngine...\n")
+autoawait_in_bluesky_event_loop()
 
 # Set some metadata that never changes.
 RE.md["facility"] = "NSLS-II"
