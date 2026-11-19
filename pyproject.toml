@@ -31,7 +31,7 @@ dependencies = [
   "bluesky-tiled-plugins>=2.0.13",
   "ipython>=9.15.0",
   "nslsii @ git+https://github.com/NSLS2/nslsii@main",
-  "ophyd-async[ca,pva] @ git+https://github.com/bluesky/ophyd-async@main",
+  "ophyd-async[ca,pva]>=0.21.5,<0.22",
   "redis-json-dict>=0.2.2",
   "rich>=15.0.0",
   "tiled[client]>=0.2.12",
@@ -40,7 +40,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-  "ophyd-async[ca,pva,sim] @ git+https://github.com/bluesky/ophyd-async@main",
+  "ophyd-async[ca,pva,sim]>=0.21.5,<0.22",
   "inflection",
   "import-linter",
   "numpydoc",
@@ -194,3 +194,12 @@ extend-ignore-names = ["RE"]
 
 [tool.importlinter]
 root_package = "xpd_tools"
+
+[[tool.importlinter.contracts]]
+name = "Library layering (profiles and optimization are unconstrained)"
+type = "layers"
+layers = [
+  "xpd_tools.tomo",
+  "xpd_tools.plans",
+  "xpd_tools.utils",
+]
