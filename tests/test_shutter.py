@@ -1,7 +1,8 @@
 """Tests for the shutter devices and plan stubs."""
 
 import pytest
-from bluesky.run_engine import RunEngine
+from bluesky.run_engine import RunEngine, call_in_bluesky_event_loop
+from bluesky.utils import FailedStatus
 from ophyd_async.core import (
     callback_on_mock_execute,
     get_mock_put,
@@ -12,11 +13,13 @@ from ophyd_async.core import (
 from xpd_tools import shutter as shutter_module
 from xpd_tools.shutter import (
     FastShutter,
+    FastShutterStatus,
     PPSShutter,
     Shutter,
     ShutterStatus,
     ensure_shutter_closed,
     ensure_shutter_open,
+    ensure_shutter_state,
 )
 
 
@@ -119,29 +122,99 @@ async def test_fast_shutter_moves_motor(fast: FastShutter):
 
 
 @pytest.mark.parametrize(
-    ("open_switch", "closed_switch", "expected"),
+    ("open_switch", "closed_switch", "position", "expected"),
     [
-        (MADE, NOT_MADE, ShutterStatus.OPEN),
-        (NOT_MADE, MADE, ShutterStatus.CLOSED),
-        # Neither or both made: not proven closed.
-        (NOT_MADE, NOT_MADE, ShutterStatus.OPEN),
-        (MADE, MADE, ShutterStatus.OPEN),
+        (MADE, NOT_MADE, -20.0, FastShutterStatus.OPEN),
+        (MADE, NOT_MADE, -19.6, FastShutterStatus.OPEN),
+        (NOT_MADE, MADE, 20.0, FastShutterStatus.CLOSED),
+        # Neither or both made: no state is shown.
+        (NOT_MADE, NOT_MADE, -20.0, FastShutterStatus.UNKNOWN),
+        (NOT_MADE, NOT_MADE, 20.0, FastShutterStatus.UNKNOWN),
+        (MADE, MADE, -20.0, FastShutterStatus.UNKNOWN),
+        # Switches and motor disagree.
+        (MADE, NOT_MADE, 20.0, FastShutterStatus.UNKNOWN),
+        (NOT_MADE, MADE, 0.0, FastShutterStatus.UNKNOWN),
     ],
 )
-async def test_fast_shutter_status_from_switches(
-    fast: FastShutter, open_switch: bool, closed_switch: bool, expected: ShutterStatus
+async def test_fast_shutter_status(
+    fast: FastShutter,
+    open_switch: bool,
+    closed_switch: bool,
+    position: float,
+    expected: FastShutterStatus,
 ):
+    set_mock_value(fast.motor.user_readback, position)
     set_mock_value(fast.open_switch, open_switch)
     set_mock_value(fast.closed_switch, closed_switch)
     assert await fast.status.get_value() == expected
 
 
-async def test_fast_shutter_status_ignores_position(fast: FastShutter):
-    # Closed switch made but the motor elsewhere: the switches decide the status.
-    set_mock_value(fast.motor.user_readback, 0.0)
-    set_mock_value(fast.closed_switch, MADE)
-    set_mock_value(fast.open_switch, NOT_MADE)
-    assert await fast.status.get_value() == ShutterStatus.CLOSED
+@pytest.mark.parametrize("desired", [True, False])
+@pytest.mark.parametrize(
+    ("open_switch", "closed_switch", "position"),
+    [(NOT_MADE, NOT_MADE, -20.0), (NOT_MADE, NOT_MADE, 20.0), (MADE, MADE, 20.0)],
+)
+def test_ensure_actuates_unknown_fast_shutter(
+    RE: RunEngine,
+    fast: FastShutter,
+    sleeps: list[float],
+    desired: bool,
+    open_switch: bool,
+    closed_switch: bool,
+    position: float,
+):
+    # An unknown state is never taken as the desired one: set() runs its switch
+    # wait and position check whichever way it is asked to go.
+    set_mock_value(fast.motor.user_readback, position)
+    set_mock_value(fast.open_switch, open_switch)
+    set_mock_value(fast.closed_switch, closed_switch)
+    RE(ensure_shutter_state(fast, desired, allow_actuation=True))
+    expected = FastShutterStatus.OPEN if desired else FastShutterStatus.CLOSED
+    assert call_in_bluesky_event_loop(fast.status.get_value()) == expected
+    get_mock_put(fast.motor.user_setpoint).assert_called_once_with(
+        -20.0 if desired else 20.0
+    )
+
+
+def test_ensure_stops_when_switches_and_motor_disagree(
+    RE: RunEngine, fast: FastShutter, sleeps: list[float]
+):
+    # The switches show open but the motor is at the closed angle: the plan stops
+    # with both readings rather than trusting either.
+    set_mock_value(fast.motor.user_readback, 20.0)
+    set_mock_value(fast.open_switch, MADE)
+    set_mock_value(fast.closed_switch, NOT_MADE)
+    with pytest.raises(FailedStatus) as info:
+        RE(ensure_shutter_open(fast, allow_actuation=True))
+    assert "disagree" in str(info.value.__cause__ or info.value)
+
+
+async def test_unnamed_fast_shutter_opens_and_closes():
+    # An unnamed device would leave every child named "", which the switch wait
+    # and the derived status must not depend on.
+    fast = FastShutter()
+    await fast.connect(mock=True)
+    assert fast.name == ""
+    assert fast.open_switch.name != fast.closed_switch.name
+    await fast.set(True)
+    assert await fast.status.get_value() == FastShutterStatus.OPEN
+    await fast.set(False)
+    assert await fast.status.get_value() == FastShutterStatus.CLOSED
+
+
+def test_ensure_checks_every_unnamed_shutter(RE: RunEngine):
+    # Statuses of unnamed shutters must not overwrite each other.
+    async def _make() -> tuple[Shutter, Shutter]:
+        closed, opened = Shutter("A:"), Shutter("B:")
+        await closed.connect(mock=True)
+        await opened.connect(mock=True)
+        set_mock_value(closed.status, ShutterStatus.CLOSED)
+        set_mock_value(opened.status, ShutterStatus.OPEN)
+        return closed, opened
+
+    closed, opened = call_in_bluesky_event_loop(_make())
+    with pytest.raises(ValueError, match="is closed"):
+        RE(ensure_shutter_open([closed, opened]))
 
 
 async def test_fast_shutter_repeat_set_does_not_move(fast: FastShutter):

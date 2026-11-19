@@ -161,16 +161,45 @@ def _made(raw: bool) -> bool:
     return raw == FAST_SHUTTER_SWITCH_MADE
 
 
-def _switches_to_status(open_switch: bool, closed_switch: bool) -> ShutterStatus:
-    """Combine the fast shutter's raw position switch values into its status.
+class FastShutterStatus(StrictEnum):
+    """Fast shutter status; equal to the `ShutterStatus` member of the same value.
 
-    Closed only when the closed switch is made and the open switch is not. Any
-    other combination, including both or neither made, is not proven closed, so
-    it reads as open.
+    ``UNKNOWN`` is anything the switches and motor do not positively agree on, so
+    `ensure_shutter_state` actuates it whether it is asked to open or close.
     """
-    if _made(closed_switch) and not _made(open_switch):
-        return ShutterStatus.CLOSED
-    return ShutterStatus.OPEN
+
+    OPEN = "Open"
+    CLOSED = "Not Open"
+    UNKNOWN = "Unknown"
+
+
+def _fast_shutter_status(
+    open_switch: bool,
+    closed_switch: bool,
+    position: float,
+    open_position: float,
+    closed_position: float,
+    tolerance: float,
+) -> FastShutterStatus:
+    """Combine the fast shutter's raw switch values and motor position.
+
+    Open or closed only when that end's switch is made, the other switch is not,
+    and the motor is within ``tolerance`` of that end; anything else, including
+    both or neither switch made or a motor that disagrees, is unknown.
+    """
+    if (
+        _made(open_switch)
+        and not _made(closed_switch)
+        and abs(position - open_position) <= tolerance
+    ):
+        return FastShutterStatus.OPEN
+    if (
+        _made(closed_switch)
+        and not _made(open_switch)
+        and abs(position - closed_position) <= tolerance
+    ):
+        return FastShutterStatus.CLOSED
+    return FastShutterStatus.UNKNOWN
 
 
 class MockFastShutter(DeviceMock["FastShutter"]):
@@ -207,9 +236,10 @@ class FastShutter(Shutter):
     physical position switches, which read "SW Low" when made; the motor
     position is only a cross-check.
 
-    The status is closed only when the closed switch is made and the open switch
-    is not; anything else reads as open (not proven closed). After every open or
-    close the motor position must agree with the switches, otherwise an error
+    The status is open or closed only when that end's switch is made, the other
+    is not, and the motor is within ``tolerance`` of that end; anything else is
+    ``UNKNOWN``, which `ensure_shutter_state` always actuates. After every open
+    or close the motor position must agree with the switches, otherwise an error
     names both readings.
 
     Parameters
@@ -237,8 +267,9 @@ class FastShutter(Shutter):
         The open position switch, False ("SW Low") when made.
     closed_switch : EpicsSignalR[bool]
         The closed position switch, False ("SW Low") when made.
-    status : SignalR[ShutterStatus]
-        Closed only when ``closed_switch`` is made and ``open_switch`` is not.
+    status : SignalR[FastShutterStatus]
+        Open or closed only when both switches and the motor agree, otherwise
+        ``UNKNOWN``.
     """
 
     def __init__(
@@ -264,11 +295,30 @@ class FastShutter(Shutter):
         self.open_switch = epics_signal_r(bool, f"{switch_prefix}Sw:Opn1-Sts")
         self.closed_switch = epics_signal_r(bool, f"{switch_prefix}Sw:Cls1-Sts")
         self.status = derived_signal_r(
-            _switches_to_status,
+            _fast_shutter_status,
             open_switch=self.open_switch,
             closed_switch=self.closed_switch,
+            position=self.motor.user_readback,
+            open_position=open_position,
+            closed_position=closed_position,
+            tolerance=tolerance,
         )
         self._sub_translators = {}
+        # Name the children now that they exist (see set_name).
+        self.set_name(name)
+
+    def set_name(self, name: str, *, child_name_separator: str | None = None) -> None:
+        """Name the shutter, giving its children distinct names even if unnamed.
+
+        The derived ``status`` keys its inputs by name, so the unnamed children
+        an unnamed device gets (all ``""``) would overwrite each other and the
+        status would never update. Unnamed, each child is named after its
+        attribute instead.
+        """
+        super().set_name(name, child_name_separator=child_name_separator)
+        if not name:
+            for attr_name, child in self.children():
+                child.set_name(attr_name, child_name_separator=child_name_separator)
 
     async def _command(self, value: bool) -> None:
         """Open or close, confirmed by the switches, then check the position.
@@ -294,13 +344,19 @@ class FastShutter(Shutter):
         )
 
         async def _shown() -> None:
-            values: dict[str, bool] = {}
+            # Keyed by identity: unnamed switches share the name "".
+            made_value: bool | None = None
+            other_value: bool | None = None
             async for signal, switch_value in observe_signals_value(made, other):
-                values[signal.name] = switch_value
+                if signal is made:
+                    made_value = switch_value
+                else:
+                    other_value = switch_value
                 if (
-                    len(values) == 2
-                    and _made(values[made.name])
-                    and not _made(values[other.name])
+                    made_value is not None
+                    and other_value is not None
+                    and _made(made_value)
+                    and not _made(other_value)
                 ):
                     return
 
@@ -422,19 +478,23 @@ def ensure_shutter_state(
     """
     shutters = shutter if isinstance(shutter, list) else [shutter]
 
-    shutter_statuses = {}
+    # Listed in order rather than keyed by name: unnamed shutters share "".
+    shutter_statuses = []
     for s in shutters:
-        shutter_statuses[s.name] = yield from bps.rd(s.status)
+        shutter_statuses.append((yield from bps.rd(s.status)))
 
+    # Anything but the desired state, such as a fast shutter's UNKNOWN, counts
+    # as not there.
+    target = ShutterStatus.OPEN if desired_state else ShutterStatus.CLOSED
     actuated = False
-    for s in shutters:
-        if (shutter_statuses[s.name] == ShutterStatus.OPEN) != desired_state:
+    for s, status in zip(shutters, shutter_statuses, strict=True):
+        if status != target:
             if allow_actuation:
                 yield from bps.abs_set(s, desired_state, group=group, wait=False)
                 actuated = True
             else:
                 raise ValueError(
-                    f"Shutter {s.name} is {shutter_statuses[s.name].name.lower()}, but"
+                    f"Shutter {s.name} is {status.name.lower()}, but"
                     f" the desired state is {'open' if desired_state else 'closed'}!"
                 )
 
