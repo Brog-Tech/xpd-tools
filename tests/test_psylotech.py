@@ -415,6 +415,42 @@ async def test_load_move_probes_first_then_caps_each_step(
     assert len(steps) > 3
 
 
+class _TimeoutThatNeverCancels:
+    """Stands in for asyncio.timeout when its cancellation is lost."""
+
+    def __init__(self, delay: float | None) -> None:
+        self.delay = delay
+
+    async def __aenter__(self) -> "_TimeoutThatNeverCancels":
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> None:
+        return None
+
+
+@pytest.mark.timeout(10)
+async def test_load_move_stops_at_its_own_deadline_if_the_timeout_never_cancels(
+    load_frame: tuple[PsylotechAxial, PsylotechLoad], monkeypatch: pytest.MonkeyPatch
+):
+    """The load loop must not rely on asyncio.timeout's cancellation alone.
+
+    On Python 3.11, asyncio.wait_for (used by every ophyd-async signal read) can
+    swallow that cancellation (CPython gh-96764), which left the loop running
+    forever. Here the cancellation never arrives at all, on every Python.
+    """
+    monkeypatch.setattr(asyncio, "timeout", _TimeoutThatNeverCancels)
+    axial, load = load_frame
+    load.movable_logic.move_timeout = 0.3
+    callback_on_mock_put(
+        axial.user_setpoint, lambda v: set_mock_value(axial.user_readback, v)
+    )
+    loop = asyncio.get_running_loop()
+    start = loop.time()
+    with pytest.raises(TimeoutError):
+        await load.set(500.0)
+    assert loop.time() - start < 2.0
+
+
 async def test_load_move_times_out_when_the_load_never_settles(
     load_frame: tuple[PsylotechAxial, PsylotechLoad],
 ):
