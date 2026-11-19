@@ -14,7 +14,11 @@ from pathlib import PurePosixPath
 import bluesky.plan_stubs as bps
 import bluesky.plans as bp
 from bluesky.callbacks.best_effort import BestEffortCallback
-from bluesky.run_engine import RunEngine, autoawait_in_bluesky_event_loop
+from bluesky.run_engine import (
+    RunEngine,
+    autoawait_in_bluesky_event_loop,
+    call_in_bluesky_event_loop,  # noqa: F401 - operator namespace
+)
 from bluesky.utils import ProgressBarManager
 from bluesky_tiled_plugins import BufferingWrapper, TiledWriter
 from IPython.core.getipython import get_ipython
@@ -83,7 +87,6 @@ rprint("\n[bold][blue]Starting the XPDD profile collection...[/blue][/bold]")
 # Create our RunEngine instance
 RE: RunEngine = initialize_run_engine()
 rprint("Initialzied RunEngine...\n")
-autoawait_in_bluesky_event_loop()
 
 # Set some metadata that never changes.
 RE.md["facility"] = "NSLS-II"
@@ -146,12 +149,12 @@ RE.subscribe(bec)
 
 RE.subscribe(LastDarkFlatUIDTracker(RE.md))
 
-# Setup the proposal ID prompt, as well as the autoawait magic
-# Allows for calling `await coro()` directly in the IPython shell
+# Setup the proposal ID prompt, and let `await coro()` run in the IPython shell
 ipython = get_ipython()
 if ipython is not None and isinstance(ipython, TerminalInteractiveShell):
     ipython.prompts = ProposalIDPrompt(RE, ipython)
-    ipython.run_line_magic("autoawait", "call_in_bluesky_event_loop")
+    # Run `await coro()` typed in the shell on the RunEngine's event loop.
+    autoawait_in_bluesky_event_loop(ipython)
     # ipython.run_line_magic("matplotlib", "")
     if not XPDTOOLS_RUNNING_IN_CI:
         tiled_reading_client = c = from_uri("https://tiled.nsls2.bnl.gov")["xpdd"][
