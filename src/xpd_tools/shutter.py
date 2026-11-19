@@ -76,7 +76,13 @@ class Shutter(EpicsDevice, Subscribable[bool], AsyncMovable[bool]):
         Command to open the shutter
     close_cmd : EpicsTriggerableCommand
         Command to close the shutter
+    settle_time : float
+        Seconds the ensure_shutter_* plans sleep after actuating this shutter,
+        once its status reports the new state (class attribute; may be
+        overridden per instance).
     """
+
+    settle_time: float = 4.0
 
     def __init__(self, prefix: str, name: str = ""):
         super().__init__(prefix, name=name)
@@ -270,7 +276,12 @@ class FastShutter(Shutter):
     status : SignalR[FastShutterStatus]
         Open or closed only when both switches and the motor agree, otherwise
         ``UNKNOWN``.
+    settle_time : float
+        Seconds the ensure_shutter_* plans sleep after actuating; very short
+        because the status already comes from the position switches.
     """
+
+    settle_time: float = 0.05
 
     def __init__(
         self,
@@ -456,7 +467,7 @@ def ensure_shutter_state(
     allow_actuation: bool = False,
     group: Hashable | None = None,
     wait: bool = True,
-    sleep_time: float = 4.0,
+    sleep_time: float | None = None,
 ):
     """Plan stub to guarantees that the shutter(s) is/are in the desired state.
 
@@ -473,8 +484,10 @@ def ensure_shutter_state(
         the Bluesky group to use for the actuation, if any
     wait : bool, default True
         whether to wait for the shutter to reach the desired state after actuation
-    sleep_time : float, default 4.0
-        the time to sleep to ensure the shutter has reached the desired state
+    sleep_time : float | None, optional
+        the time to sleep to ensure the shutter has reached the desired state.
+        By default the longest `Shutter.settle_time` of the shutters that were
+        actuated is used.
     """
     shutters = shutter if isinstance(shutter, list) else [shutter]
 
@@ -486,12 +499,12 @@ def ensure_shutter_state(
     # Anything but the desired state, such as a fast shutter's UNKNOWN, counts
     # as not there.
     target = ShutterStatus.OPEN if desired_state else ShutterStatus.CLOSED
-    actuated = False
+    actuated: list[Shutter] = []
     for s, status in zip(shutters, shutter_statuses, strict=True):
         if status != target:
             if allow_actuation:
                 yield from bps.abs_set(s, desired_state, group=group, wait=False)
-                actuated = True
+                actuated.append(s)
             else:
                 raise ValueError(
                     f"Shutter {s.name} is {status.name.lower()}, but"
@@ -503,6 +516,8 @@ def ensure_shutter_state(
 
         # It seems that the shutter status in EPICS is not reliable enough to
         # consider the shutter fully opened/closed, so wait some extra time.
+        if sleep_time is None:
+            sleep_time = max(s.settle_time for s in actuated)
         yield from bps.sleep(sleep_time)
 
 
@@ -511,7 +526,7 @@ def ensure_shutter_open(
     allow_actuation: bool = False,
     group: Hashable | None = None,
     wait: bool = True,
-    sleep_time: float = 4.0,
+    sleep_time: float | None = None,
 ):
     """Plan stub to guarantee that the shutter(s) is/are open.
 
@@ -526,8 +541,10 @@ def ensure_shutter_open(
         the Bluesky group to use for the actuation, if any
     wait : bool, default True
         whether to wait for the shutter to reach the desired state after actuation
-    sleep_time : float, default 4.0
-        the time to sleep to ensure the shutter has reached the desired state
+    sleep_time : float | None, optional
+        the time to sleep to ensure the shutter has reached the desired state.
+        By default the longest `Shutter.settle_time` of the shutters that were
+        actuated is used.
     """
     yield from ensure_shutter_state(
         shutter,
@@ -544,7 +561,7 @@ def ensure_shutter_closed(
     allow_actuation: bool = True,
     group: Hashable | None = None,
     wait: bool = True,
-    sleep_time: float = 4.0,
+    sleep_time: float | None = None,
 ):
     """Plan stub to guarantee that the shutter is closed.
 
@@ -559,8 +576,10 @@ def ensure_shutter_closed(
         the Bluesky group to use for the actuation, if any
     wait : bool, default True
             whether to wait for the shutter to reach the desired state after actuation
-    sleep_time : float, default 4.0
-        the time to sleep to ensure the shutter has reached the desired state
+    sleep_time : float | None, optional
+        the time to sleep to ensure the shutter has reached the desired state.
+        By default the longest `Shutter.settle_time` of the shutters that were
+        actuated is used.
     """
     yield from ensure_shutter_state(
         shutter,

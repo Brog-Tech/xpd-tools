@@ -270,3 +270,25 @@ def test_ensure_open_actuates_fast_shutter(
     RE(ensure_shutter_closed(fast))
     puts = get_mock_put(fast.motor.user_setpoint).call_args_list
     assert [c.args[0] for c in puts] == [-20.0, 20.0]
+
+
+def test_fast_shutter_sleeps_for_its_short_settle_time(
+    RE: RunEngine, fast: FastShutter, sleeps: list[float]
+):
+    assert FastShutter.settle_time == 0.05
+    RE(ensure_shutter_open(fast, allow_actuation=True))
+    assert sleeps == [0.05]
+
+
+def test_explicit_sleep_time_overrides_settle_time(
+    RE: RunEngine, fast: FastShutter, sleeps: list[float]
+):
+    RE(ensure_shutter_open(fast, allow_actuation=True, sleep_time=1.0))
+    assert sleeps == [1.0]
+
+
+def test_mixed_shutters_sleep_for_the_slowest_actuated(
+    RE: RunEngine, fast: FastShutter, shutter: Shutter, sleeps: list[float]
+):
+    RE(ensure_shutter_open([fast, shutter], allow_actuation=True))
+    assert sleeps == [Shutter.settle_time]
