@@ -25,6 +25,7 @@ def _dark_flat(rig: TomoRig, **kwargs):
         sample_out_motor=rig.sample_out_motor,
         fe_shutter=rig.fe_shutter,
         photon_shutter=rig.photon_shutter,
+        fast_shutter=rig.fast_shutter,
         **kwargs,
     )
 
@@ -58,7 +59,11 @@ async def test_tomo_dark_flat_moves_sample_and_shutter(
     setpoint = tomo_rig.sample_out_motor.user_setpoint
     get_mock_put(setpoint).side_effect = lambda v, **_: events.append(f"x={v}")
     tomo_rig.shutter_log = events
-    for shutter in (tomo_rig.fe_shutter, tomo_rig.photon_shutter):
+    for shutter in (
+        tomo_rig.fe_shutter,
+        tomo_rig.photon_shutter,
+        tomo_rig.fast_shutter,
+    ):
         from tomo_rig import _make_shutter_instant  # noqa: PLC2701
 
         _make_shutter_instant(shutter, events)
@@ -69,13 +74,13 @@ async def test_tomo_dark_flat_moves_sample_and_shutter(
     # sample moves back in.
     assert events == [
         "x=5.0",
-        "photon_shutter:open",
-        "photon_shutter:close",
+        "fast_shutter:open",
+        "fast_shutter:close",
         "x=3.0",
     ]
     velocity_puts = get_mock_put(tomo_rig.sample_out_motor.velocity).call_args_list
     assert [c.args[0] for c in velocity_puts] == [0.1, 1.0]
-    assert await tomo_rig.photon_shutter.status.get_value() == ShutterStatus.CLOSED
+    assert await tomo_rig.fast_shutter.status.get_value() == ShutterStatus.CLOSED
     assert await tomo_rig.sample_out_motor.user_readback.get_value() == 3.0
 
 
@@ -99,6 +104,7 @@ async def test_tomo_dark_flat_per_detector_exposure(
             sample_out_motor=tomo_rig.sample_out_motor,
             fe_shutter=tomo_rig.fe_shutter,
             photon_shutter=tomo_rig.photon_shutter,
+            fast_shutter=tomo_rig.fast_shutter,
         )
     )
     pilatus_puts = get_mock_put(tomo_rig.pilatus.driver.acquire_time).call_args_list
@@ -122,7 +128,7 @@ async def test_tomo_dark_flat_cleans_up_on_failure(
     monkeypatch.setattr(bps, "trigger_and_read", _fail_flats)
     with pytest.raises(RuntimeError, match="boom"):
         RE(_dark_flat(tomo_rig, sample_out_velocity=0.1))
-    assert await tomo_rig.photon_shutter.status.get_value() == ShutterStatus.CLOSED
+    assert await tomo_rig.fast_shutter.status.get_value() == ShutterStatus.CLOSED
     assert await tomo_rig.sample_out_motor.user_readback.get_value() == 3.0
     assert await tomo_rig.sample_out_motor.velocity.get_value() == 1.0
     assert await tomo_rig.pilatus.driver.acquire_time.get_value() == 0.5
@@ -136,7 +142,7 @@ def test_tomo_dark_flat_closes_shutter_before_return_on_failure(
     events: list[str] = []
     setpoint = tomo_rig.sample_out_motor.user_setpoint
     get_mock_put(setpoint).side_effect = lambda v, **_: events.append(f"x={v}")
-    _make_shutter_instant(tomo_rig.photon_shutter, events)
+    _make_shutter_instant(tomo_rig.fast_shutter, events)
 
     original = bps.trigger_and_read
 
@@ -151,8 +157,8 @@ def test_tomo_dark_flat_closes_shutter_before_return_on_failure(
     # The sample only moves back into the beam once the shutter is closed.
     assert events == [
         "x=5.0",
-        "photon_shutter:open",
-        "photon_shutter:close",
+        "fast_shutter:open",
+        "fast_shutter:close",
         "x=3.0",
     ]
 

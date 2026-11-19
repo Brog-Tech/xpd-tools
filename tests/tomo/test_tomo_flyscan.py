@@ -208,7 +208,7 @@ def test_tomo_flyscan_operates_shutter_and_restores_motor(
     RE: RunEngine, tomo_rig: TomoRig, sleeps
 ):
     RE(_flyscan(tomo_rig))
-    assert tomo_rig.shutter_log == ["photon_shutter:open", "photon_shutter:close"]
+    assert tomo_rig.shutter_log == ["fast_shutter:open", "fast_shutter:close"]
     get_mock_put(tomo_rig.rot_motor.motor_stop).assert_called()
     assert get_mock_put(tomo_rig.rot_motor.velocity).call_args_list[-1].args[0] == 5.0
 
@@ -223,7 +223,7 @@ async def test_tomo_flyscan_cleans_up_on_failure(
     monkeypatch.setattr(flyscans, "_fly_to_streams", _fail)
     with pytest.raises(RuntimeError, match="boom"):
         RE(_flyscan(tomo_rig))
-    assert await tomo_rig.photon_shutter.status.get_value() == ShutterStatus.CLOSED
+    assert await tomo_rig.fast_shutter.status.get_value() == ShutterStatus.CLOSED
     assert await tomo_rig.rot_motor.velocity.get_value() == 5.0
     get_mock_put(tomo_rig.rot_motor.motor_stop).assert_called()
 
@@ -234,6 +234,17 @@ def test_tomo_flyscan_requires_open_fe_shutter(
     set_mock_value(tomo_rig.fe_shutter.status, ShutterStatus.CLOSED)
     with pytest.raises(ValueError, match="fe_shutter is closed"):
         RE(_flyscan(tomo_rig))
+
+
+@pytest.mark.parametrize("name", ["fe_shutter", "photon_shutter"])
+def test_tomo_flyscan_never_opens_beam_shutters(
+    RE: RunEngine, tomo_rig: TomoRig, sleeps, name: str
+):
+    set_mock_value(getattr(tomo_rig, name).status, ShutterStatus.CLOSED)
+    with pytest.raises(ValueError, match=f"{name} is closed.*use_shutter=False"):
+        RE(_flyscan(tomo_rig))
+    # Closed beam shutters are reported, never opened.
+    assert tomo_rig.shutter_log == []
 
 
 @pytest.mark.parametrize(

@@ -266,7 +266,7 @@ async def test_flyscan_combinations(
             assert gaps == pytest.approx([step * divisor] * nproj, abs=1e-6), name
 
     # Always cleaned up: shutter closed, motor stopped, speed restored.
-    assert await rig.photon_shutter.status.get_value() == ShutterStatus.CLOSED
+    assert await rig.fast_shutter.status.get_value() == ShutterStatus.CLOSED
     assert await rig.rot_motor.velocity.get_value() == 5.0
     get_mock_put(rig.rot_motor.motor_stop).assert_called()
 

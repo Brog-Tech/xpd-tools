@@ -9,7 +9,9 @@ from ophyd_async.core import (
     set_mock_value,
 )
 
+from xpd_tools import shutter as shutter_module
 from xpd_tools.shutter import (
+    FastShutter,
     PPSShutter,
     Shutter,
     ShutterStatus,
@@ -81,3 +83,117 @@ async def test_pps_interlock_acknowledge():
     await pps.interlock_ack.set(True)
     get_mock_put(pps.interlock_ack.request).assert_called_once()
     assert await pps.interlock_ack.acknowledged.get_value()
+
+
+@pytest.fixture
+async def fast() -> FastShutter:
+    async with init_devices(mock=True):
+        fast = FastShutter(name="fast_shutter")
+    return fast
+
+
+async def test_fast_shutter_pvs(fast: FastShutter):
+    assert fast.motor.user_setpoint.source == (
+        "mock+ca://XF:28IDC-ES:1{Sh2:Exp-Ax:5}Mtr.VAL"
+    )
+    assert fast.open_switch.source == "mock+ca://XF:28IDC-ES:1{Sh:Exp}Sw:Opn1-Sts"
+    assert fast.closed_switch.source == "mock+ca://XF:28IDC-ES:1{Sh:Exp}Sw:Cls1-Sts"
+
+
+# The fast shutter's switches read False ("SW Low") when made.
+MADE, NOT_MADE = False, True
+
+
+async def test_fast_shutter_moves_motor(fast: FastShutter):
+    assert await fast.status.get_value() == ShutterStatus.CLOSED
+    await fast.set(True)
+    assert await fast.motor.user_readback.get_value() == -20.0
+    assert await fast.open_switch.get_value() == MADE
+    assert await fast.closed_switch.get_value() == NOT_MADE
+    assert await fast.status.get_value() == ShutterStatus.OPEN
+    await fast.set(False)
+    assert await fast.motor.user_readback.get_value() == 20.0
+    assert await fast.open_switch.get_value() == NOT_MADE
+    assert await fast.closed_switch.get_value() == MADE
+    assert await fast.status.get_value() == ShutterStatus.CLOSED
+
+
+@pytest.mark.parametrize(
+    ("open_switch", "closed_switch", "expected"),
+    [
+        (MADE, NOT_MADE, ShutterStatus.OPEN),
+        (NOT_MADE, MADE, ShutterStatus.CLOSED),
+        # Neither or both made: not proven closed.
+        (NOT_MADE, NOT_MADE, ShutterStatus.OPEN),
+        (MADE, MADE, ShutterStatus.OPEN),
+    ],
+)
+async def test_fast_shutter_status_from_switches(
+    fast: FastShutter, open_switch: bool, closed_switch: bool, expected: ShutterStatus
+):
+    set_mock_value(fast.open_switch, open_switch)
+    set_mock_value(fast.closed_switch, closed_switch)
+    assert await fast.status.get_value() == expected
+
+
+async def test_fast_shutter_status_ignores_position(fast: FastShutter):
+    # Closed switch made but the motor elsewhere: the switches decide the status.
+    set_mock_value(fast.motor.user_readback, 0.0)
+    set_mock_value(fast.closed_switch, MADE)
+    set_mock_value(fast.open_switch, NOT_MADE)
+    assert await fast.status.get_value() == ShutterStatus.CLOSED
+
+
+async def test_fast_shutter_repeat_set_does_not_move(fast: FastShutter):
+    await fast.set(True)
+    await fast.set(True)
+    await fast.set(False)
+    await fast.set(False)
+    puts = get_mock_put(fast.motor.user_setpoint).call_args_list
+    assert [c.args[0] for c in puts] == [-20.0, 20.0]
+
+
+async def test_fast_shutter_reports_position_disagreement(fast: FastShutter):
+    # The switches show closed, but the motor is not at the closed angle.
+    set_mock_value(fast.motor.user_readback, 5.0)
+    set_mock_value(fast.closed_switch, MADE)
+    set_mock_value(fast.open_switch, NOT_MADE)
+    with pytest.raises(RuntimeError, match="motor is at 5.0, not 20.0.*disagree"):
+        await fast.set(False)
+
+
+async def test_fast_shutter_fault_state_is_moved(fast: FastShutter):
+    # Both switches made shows neither state, so closing still moves.
+    set_mock_value(fast.motor.user_readback, -20.0)
+    set_mock_value(fast.open_switch, MADE)
+    set_mock_value(fast.closed_switch, MADE)
+    await fast.set(False)
+    get_mock_put(fast.motor.user_setpoint).assert_called_once_with(20.0)
+    assert await fast.status.get_value() == ShutterStatus.CLOSED
+
+
+async def test_fast_shutter_open_fails_without_switch(
+    fast: FastShutter, monkeypatch: pytest.MonkeyPatch
+):
+    # The motor reports its move done, but the switches never change.
+    async def _move_without_switch(_motor: object, _position: float) -> None:
+        pass
+
+    monkeypatch.setattr(shutter_module, "DEFAULT_TIMEOUT", 0.1)
+    monkeypatch.setattr(type(fast.motor), "set", _move_without_switch)
+    with pytest.raises(TimeoutError, match="did not show open"):
+        await fast.set(True)
+
+
+def test_fast_shutter_rejects_overlapping_positions():
+    with pytest.raises(ValueError, match="further apart"):
+        FastShutter(open_position=0.0, closed_position=0.2, tolerance=0.5)
+
+
+def test_ensure_open_actuates_fast_shutter(
+    RE: RunEngine, fast: FastShutter, sleeps: list[float]
+):
+    RE(ensure_shutter_open(fast, allow_actuation=True))
+    RE(ensure_shutter_closed(fast))
+    puts = get_mock_put(fast.motor.user_setpoint).call_args_list
+    assert [c.args[0] for c in puts] == [-20.0, 20.0]

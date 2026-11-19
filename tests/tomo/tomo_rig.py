@@ -39,6 +39,7 @@ class TomoRig:
     sample_out_motor: Motor
     fe_shutter: Shutter
     photon_shutter: Shutter
+    fast_shutter: Shutter
     #: A second imaging detector, for per-detector exposure tests.
     iris: KinetixDetector
     #: A fluorescence detector, which takes no darks/flats.
@@ -65,6 +66,7 @@ class TomoRig:
             "rot_motor": self.rot_motor,
             "fe_shutter": self.fe_shutter,
             "photon_shutter": self.photon_shutter,
+            "fast_shutter": self.fast_shutter,
         }
 
 
@@ -185,6 +187,7 @@ async def make_tomo_rig(tmp_path: Path) -> TomoRig:
         )
         fe_shutter = Shutter("FE:", name="fe_shutter")
         photon_shutter = Shutter("PH:", name="photon_shutter")
+        fast_shutter = Shutter("FS:", name="fast_shutter")
         iris = KinetixDetector(
             "DET2:", ADWriterFactory.hdf(path_provider), name="iris1"
         )
@@ -220,11 +223,14 @@ async def make_tomo_rig(tmp_path: Path) -> TomoRig:
         sample_out_motor,
         fe_shutter,
         photon_shutter,
+        fast_shutter,
         iris,
         xs3,
     )
-    for shutter in (fe_shutter, photon_shutter):
+    for shutter in (fe_shutter, photon_shutter, fast_shutter):
         _make_shutter_instant(shutter, rig.shutter_log)
+    # The front-end and photon shutters stay open; the plans cycle the fast one.
     set_mock_value(fe_shutter.status, ShutterStatus.OPEN)
+    set_mock_value(photon_shutter.status, ShutterStatus.OPEN)
     _simulate_fly_move(rig)
     return rig

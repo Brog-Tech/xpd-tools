@@ -59,6 +59,7 @@ def test_tomo_dark_flat_matches_spec(RE: RunEngine, tomo_rig: TomoRig, docs, sle
             sample_out_motor=tomo_rig.sample_out_motor,
             fe_shutter=tomo_rig.fe_shutter,
             photon_shutter=tomo_rig.photon_shutter,
+            fast_shutter=tomo_rig.fast_shutter,
         )
     )
     validate_run(_run_from_docs(docs), TOMO_DARK_FLAT_V1)
