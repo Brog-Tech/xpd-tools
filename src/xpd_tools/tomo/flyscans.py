@@ -312,9 +312,10 @@ def tomo_flyscan(
     ``k * D``. Each detector writes to a stream named after it, and the PandA to
     the ``rotation`` stream.
 
-    The rotation motor moves to its run-up position while the fast shutter
-    opens. Only then are the flyer and detectors armed, the PandA last, so no
-    frames are taken before the motor reaches speed.
+    The rotation motor moves to its run-up position, then the flyer and detectors
+    are armed, the PandA last, so no frames are taken before the motor reaches
+    speed. The fast shutter opens only after everything is armed, just before the
+    fly starts, so the sample is not exposed earlier.
 
     If a few frames are dropped (at most :data:`MAX_MISSING_FRAMES` per device) the
     scan keeps the frames it has and only logs a warning.
@@ -500,10 +501,6 @@ def tomo_flyscan(
     @bpp.stage_decorator(all_devices)
     @bpp.run_decorator(md=_md)
     def _body() -> MsgGenerator[None]:
-        if fast_shutter is not None:
-            yield from ensure_shutter_open(
-                fast_shutter, allow_actuation=True, group="prepare", wait=False
-            )
         yield from bps.prepare(rot_motor, motor_info, group="prepare")
         yield from bps.wait(group="prepare")
 
@@ -520,6 +517,11 @@ def tomo_flyscan(
         # Preparing the PandA arms PCAP, which enables position compare, so it must
         # come after position compare is configured.
         yield from bps.prepare(panda, panda_trigger_info, wait=True)
+
+        # Open the fast shutter only now, with everything armed, so the sample is
+        # not exposed during the run-up or arming. It closes in _cleanup.
+        if fast_shutter is not None:
+            yield from ensure_shutter_open(fast_shutter, allow_actuation=True)
 
         try:
             yield from _fly_to_streams(
