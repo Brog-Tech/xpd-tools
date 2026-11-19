@@ -37,7 +37,7 @@ from xpd_tools.detectors.pilatus4 import Pilatus4Detector
 from xpd_tools.motors import RotationMotor
 from xpd_tools.plans import *
 from xpd_tools.psylotech import Psylotech
-from xpd_tools.shutter import PPSShutter, Shutter
+from xpd_tools.shutter import FastShutter, Shutter
 from xpd_tools.tomo import *
 from xpd_tools.tomo import LastDarkFlatUIDTracker
 from xpd_tools.utils import (
@@ -234,7 +234,14 @@ with init_devices(mock=XPDTOOLS_RUNNING_IN_CI):
         name="xspress3-1",
     )
 
-with init_devices(mock=True):
-    # TODO(XPDD): Get shutter PVs for the tomo plans
-    fe_shutter = PPSShutter("TEST{Sh:FE}", name="fe_shutter")
-    photon_shutter = Shutter("TEST{Sh:sum}", name="photon_shutter")
+############
+############
+# SHUTTERS #
+############
+############
+with init_devices(mock=XPDTOOLS_RUNNING_IN_CI):
+    # The tomo plans only check that the front-end and photon shutters are open,
+    # and open and close the fast shutter. Pass use_shutter=False to skip them.
+    fe_shutter = Shutter("XF:28ID-PPS{Sh:FE}", name="fe_shutter")
+    photon_shutter = Shutter("XF:28IDA-PPS{PSh}", name="photon_shutter")
+    fast_shutter = FastShutter(name="fast_shutter")

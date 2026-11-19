@@ -69,24 +69,64 @@ DEFAULT_DEVICE_NAMES = {
     "sample_out_motor": "amTopX",
     "fe_shutter": "fe_shutter",
     "photon_shutter": "photon_shutter",
+    "fast_shutter": "fast_shutter",
 }
+
+#: Told to users when a shutter check fails.
+SHUTTER_BYPASS_HINT = (
+    "Open the shutter and try again. To run without checking or moving any "
+    "shutter, pass use_shutter=False to the plan, e.g. "
+    "RE(tomo_flyscan(..., use_shutter=False)). The plan then never opens or "
+    "closes the fast shutter, so darks are only as dark as the beam is."
+)
 
 #: A motor that can be stepped between tomograms.
 Steppable = AsyncEpicsMotor
 
 
 def _shutters(
-    use_shutter: bool, fe_shutter: Shutter | None, photon_shutter: Shutter | None
-) -> tuple[Shutter | None, Shutter | None]:
-    """Resolve the shutters, or return None for both if shutters are not used."""
+    use_shutter: bool,
+    fe_shutter: Shutter | None,
+    photon_shutter: Shutter | None,
+    fast_shutter: Shutter | None,
+) -> tuple[list[Shutter], Shutter | None]:
+    """Resolve the shutters, or return no shutters if shutters are not used.
+
+    Returns
+    -------
+    tuple[list[Shutter], Shutter | None]
+        The shutters that must already be open (front-end and photon), which
+        the plan only checks, and the fast shutter, which the plan opens and
+        closes.
+    """
     if not use_shutter:
-        return None, None
-    return (
+        return [], None
+    beam_shutters = [
         ensure_available(Shutter, fe_shutter, DEFAULT_DEVICE_NAMES["fe_shutter"]),
         ensure_available(
             Shutter, photon_shutter, DEFAULT_DEVICE_NAMES["photon_shutter"]
         ),
+    ]
+    fast_shutter = ensure_available(
+        Shutter, fast_shutter, DEFAULT_DEVICE_NAMES["fast_shutter"]
     )
+    return beam_shutters, fast_shutter
+
+
+def _check_shutters_open(shutters: list[Shutter]) -> MsgGenerator[None]:
+    """Check that the shutters are open, without ever opening them.
+
+    Raises
+    ------
+    ValueError
+        If a shutter is closed, with how to bypass the check.
+    """
+    if not shutters:
+        return
+    try:
+        yield from ensure_shutter_open(shutters)
+    except ValueError as err:
+        raise ValueError(f"{err} {SHUTTER_BYPASS_HINT}") from err
 
 
 def tomo_dark_flat(
@@ -99,13 +139,15 @@ def tomo_dark_flat(
     sample_out_motor: AsyncEpicsMotor | None = None,
     fe_shutter: Shutter | None = None,
     photon_shutter: Shutter | None = None,
+    fast_shutter: Shutter | None = None,
     md: dict[str, Any] | None = None,
 ) -> MsgGenerator[str]:
     """Take dark and flat images for tomography, in one run.
 
-    The ``dark`` stream is taken with the photon shutter closed. For the ``flat``
-    stream the sample is moved out of the beam by ``sample_out_offset`` and the
-    photon shutter is opened. Afterwards the photon shutter is closed, then the
+    The front-end and photon shutters must already be open; the plan only checks
+    them. The ``dark`` stream is taken with the fast shutter closed. For the
+    ``flat`` stream the sample is moved out of the beam by ``sample_out_offset``
+    and the fast shutter is opened. Afterwards the fast shutter is closed, then the
     sample is moved back and its motor's velocity and the detectors' exposure times
     are restored, even if the plan fails. The shutter always closes before the
     sample moves back into the beam.
@@ -130,14 +172,19 @@ def tomo_dark_flat(
         The velocity to move the sample out and back at; None keeps the motor's
         current velocity. The original velocity is restored afterwards.
     use_shutter : bool, default True
-        Whether to use the shutters. If False the plan never touches the shutters,
-        so the darks are only as dark as the beam is.
+        Whether to use the shutters. If True the front-end and photon shutters
+        must be open, and the plan opens and closes the fast shutter. If False the
+        plan never checks or touches the shutters, so the darks are only as dark
+        as the beam is.
     sample_out_motor : AsyncEpicsMotor | None, default None
         The motor that moves the sample out of the beam; None uses ``amTopX``.
     fe_shutter : Shutter | None, default None
         The front-end shutter, which must already be open; None uses ``fe_shutter``.
     photon_shutter : Shutter | None, default None
-        The photon shutter the plan opens and closes; None uses ``photon_shutter``.
+        The photon shutter, which must already be open; None uses
+        ``photon_shutter``.
+    fast_shutter : Shutter | None, default None
+        The fast shutter the plan opens and closes; None uses ``fast_shutter``.
     md : dict[str, Any] | None, default None
         Extra metadata for the run's start document.
 
@@ -169,9 +216,10 @@ def tomo_dark_flat(
     sample_out_motor = ensure_available(
         AsyncEpicsMotor, sample_out_motor, DEFAULT_DEVICE_NAMES["sample_out_motor"]
     )
-    fe_shutter, photon_shutter = _shutters(use_shutter, fe_shutter, photon_shutter)
-    if fe_shutter is not None:
-        yield from ensure_shutter_open(fe_shutter)
+    beam_shutters, fast_shutter = _shutters(
+        use_shutter, fe_shutter, photon_shutter, fast_shutter
+    )
+    yield from _check_shutters_open(beam_shutters)
 
     # Each detector's prepare sets its exposure, so put it back in the cleanup.
     initial_acquire_times = []
@@ -194,8 +242,8 @@ def tomo_dark_flat(
     @bpp.run_decorator(md=_md)
     @bpp.stage_decorator([*detectors])
     def _run() -> MsgGenerator[None]:
-        if photon_shutter is not None:
-            yield from ensure_shutter_closed(photon_shutter)
+        if fast_shutter is not None:
+            yield from ensure_shutter_closed(fast_shutter)
 
         streams = (("dark", num_dark_images), ("flat", num_flat_images))
         for stream, num_images in streams:
@@ -203,8 +251,8 @@ def tomo_dark_flat(
                 if sample_out_velocity is not None:
                     yield from bps.mv(sample_out_motor.velocity, sample_out_velocity)
                 yield from bps.mvr(sample_out_motor, sample_out_offset)
-                if photon_shutter is not None:
-                    yield from ensure_shutter_open(photon_shutter, allow_actuation=True)
+                if fast_shutter is not None:
+                    yield from ensure_shutter_open(fast_shutter, allow_actuation=True)
 
             for det in detectors:
                 yield from bps.prepare(
@@ -218,8 +266,8 @@ def tomo_dark_flat(
             yield from bps.trigger_and_read(list(detectors), name=stream)
 
     def _close_shutter() -> MsgGenerator[None]:
-        if photon_shutter is not None:
-            yield from ensure_shutter_closed(photon_shutter)
+        if fast_shutter is not None:
+            yield from ensure_shutter_closed(fast_shutter)
 
     @bpp.reset_positions_decorator([sample_out_motor])
     def _body() -> MsgGenerator[None]:
@@ -247,6 +295,7 @@ def tomo_flyscan(
     rot_motor: RotationMotor | None = None,
     fe_shutter: Shutter | None = None,
     photon_shutter: Shutter | None = None,
+    fast_shutter: Shutter | None = None,
     md: dict[str, Any] | None = None,
 ) -> MsgGenerator[str]:
     """Take a single tomography fly scan, triggered by the PandA.
@@ -263,14 +312,14 @@ def tomo_flyscan(
     ``k * D``. Each detector writes to a stream named after it, and the PandA to
     the ``rotation`` stream.
 
-    The rotation motor moves to its run-up position while the photon shutter
+    The rotation motor moves to its run-up position while the fast shutter
     opens. Only then are the flyer and detectors armed, the PandA last, so no
     frames are taken before the motor reaches speed.
 
     If a few frames are dropped (at most :data:`MAX_MISSING_FRAMES` per device) the
     scan keeps the frames it has and only logs a warning.
 
-    Afterwards the photon shutter is closed, the motor stopped, and its velocity
+    Afterwards the fast shutter is closed, the motor stopped, and its velocity
     restored, even if the plan fails.
 
     Parameters
@@ -291,8 +340,9 @@ def tomo_flyscan(
     stop : float, default 180
         The stopping angle of the rotation, in degrees.
     use_shutter : bool, default True
-        Whether to open and close the photon shutter, after checking the front-end
-        shutter is open. If False the plan never touches the shutters.
+        Whether to open and close the fast shutter, after checking the front-end
+        and photon shutters are open. If False the plan never checks or touches
+        the shutters.
     sample_name : str | None, default None
         The name of the sample being scanned.
     time_based : bool, default False
@@ -304,7 +354,10 @@ def tomo_flyscan(
     fe_shutter : Shutter | None, default None
         The front-end shutter, which must already be open; None uses ``fe_shutter``.
     photon_shutter : Shutter | None, default None
-        The photon shutter the plan opens and closes; None uses ``photon_shutter``.
+        The photon shutter, which must already be open; None uses
+        ``photon_shutter``.
+    fast_shutter : Shutter | None, default None
+        The fast shutter the plan opens and closes; None uses ``fast_shutter``.
     md : dict[str, Any] | None, default None
         Extra metadata for the run's start document.
 
@@ -341,7 +394,9 @@ def tomo_flyscan(
         config.detector: route.divisor
         for config, route in zip(configs, routing.routes, strict=True)
     }
-    fe_shutter, photon_shutter = _shutters(use_shutter, fe_shutter, photon_shutter)
+    beam_shutters, fast_shutter = _shutters(
+        use_shutter, fe_shutter, photon_shutter, fast_shutter
+    )
 
     # A detector fired every D base pulses needs D base periods for its exposure
     # plus deadtime, so the base period must be at least (exposure + deadtime) / D.
@@ -399,8 +454,7 @@ def tomo_flyscan(
         _md["sample_name"] = sample_name
     _md.update(md or {})
 
-    if fe_shutter is not None:
-        yield from ensure_shutter_open(fe_shutter)
+    yield from _check_shutters_open(beam_shutters)
 
     flyer_info, motor_info = yield from compute_flyscan_models(
         panda,
@@ -446,9 +500,9 @@ def tomo_flyscan(
     @bpp.stage_decorator(all_devices)
     @bpp.run_decorator(md=_md)
     def _body() -> MsgGenerator[None]:
-        if photon_shutter is not None:
+        if fast_shutter is not None:
             yield from ensure_shutter_open(
-                photon_shutter, allow_actuation=True, group="prepare", wait=False
+                fast_shutter, allow_actuation=True, group="prepare", wait=False
             )
         yield from bps.prepare(rot_motor, motor_info, group="prepare")
         yield from bps.wait(group="prepare")
@@ -475,8 +529,8 @@ def tomo_flyscan(
             yield from _tolerate_missed_frames(configs, panda, routing, streams, err)
 
     def _cleanup() -> MsgGenerator[None]:
-        if photon_shutter is not None:
-            yield from ensure_shutter_closed(photon_shutter)
+        if fast_shutter is not None:
+            yield from ensure_shutter_closed(fast_shutter)
         yield from bps.abs_set(rot_motor.motor_stop, 1, wait=True)
         yield from bps.mv(rot_motor.velocity, initial_velocity)
 
@@ -604,6 +658,7 @@ def tomo_nd_step_scan(
     rot_motor: RotationMotor | None = None,
     fe_shutter: Shutter | None = None,
     photon_shutter: Shutter | None = None,
+    fast_shutter: Shutter | None = None,
 ) -> MsgGenerator[None]:
     """Take a tomography flyscan at each point of an N-D grid of step motors.
 
@@ -637,7 +692,8 @@ def tomo_nd_step_scan(
     delay_between_points : float, default 0.0
         Seconds to wait between consecutive flyscans.
     use_shutter : bool, default True
-        Whether to use the shutters.
+        Whether to use the shutters. If True the front-end and photon shutters
+        must be open, and the plan opens and closes the fast shutter.
     alternate_flyscan_dir : bool, default False
         Whether to reverse the rotation direction at every other grid point.
     dark_flat_offset : float, default 0.0
@@ -677,9 +733,12 @@ def tomo_nd_step_scan(
     rot_motor : RotationMotor | None, default None
         The rotation motor; None uses ``amPhi``.
     fe_shutter : Shutter | None, default None
-        The front-end shutter; None uses ``fe_shutter``.
+        The front-end shutter, which must already be open; None uses ``fe_shutter``.
     photon_shutter : Shutter | None, default None
-        The photon shutter; None uses ``photon_shutter``.
+        The photon shutter, which must already be open; None uses
+        ``photon_shutter``.
+    fast_shutter : Shutter | None, default None
+        The fast shutter; None uses ``fast_shutter``.
 
     Raises
     ------
@@ -748,6 +807,7 @@ def tomo_nd_step_scan(
             sample_out_motor=sample_out_motor,
             fe_shutter=fe_shutter,
             photon_shutter=photon_shutter,
+            fast_shutter=fast_shutter,
         )
 
     @bpp.reset_positions_decorator(motors)
@@ -804,6 +864,7 @@ def tomo_nd_step_scan(
                         rot_motor=rot_motor,
                         fe_shutter=fe_shutter,
                         photon_shutter=photon_shutter,
+                        fast_shutter=fast_shutter,
                         md=point_md,
                     )
                     break
@@ -863,6 +924,7 @@ def tomo_flyscan_loop(
     rot_motor: RotationMotor | None = None,
     fe_shutter: Shutter | None = None,
     photon_shutter: Shutter | None = None,
+    fast_shutter: Shutter | None = None,
 ) -> MsgGenerator[None]:
     """Take repeated tomography flyscans in place, with darks/flats around them.
 
@@ -900,7 +962,8 @@ def tomo_flyscan_loop(
     sample_out_velocity : float | None, default None
         Velocity to move the sample out for flats at.
     use_shutter : bool, default True
-        Whether to use the shutters.
+        Whether to use the shutters. If True the front-end and photon shutters
+        must be open, and the plan opens and closes the fast shutter.
     sample_name : str | None, default None
         The name of the sample being scanned.
     time_based : bool, default False
@@ -914,9 +977,12 @@ def tomo_flyscan_loop(
     rot_motor : RotationMotor | None, default None
         The rotation motor; None uses ``amPhi``.
     fe_shutter : Shutter | None, default None
-        The front-end shutter; None uses ``fe_shutter``.
+        The front-end shutter, which must already be open; None uses ``fe_shutter``.
     photon_shutter : Shutter | None, default None
-        The photon shutter; None uses ``photon_shutter``.
+        The photon shutter, which must already be open; None uses
+        ``photon_shutter``.
+    fast_shutter : Shutter | None, default None
+        The fast shutter; None uses ``fast_shutter``.
     """
     yield from tomo_nd_step_scan(
         detector_configs,
@@ -941,6 +1007,7 @@ def tomo_flyscan_loop(
         rot_motor=rot_motor,
         fe_shutter=fe_shutter,
         photon_shutter=photon_shutter,
+        fast_shutter=fast_shutter,
     )
 
 
@@ -970,6 +1037,7 @@ def tomo_1d_step_scan(
     rot_motor: RotationMotor | None = None,
     fe_shutter: Shutter | None = None,
     photon_shutter: Shutter | None = None,
+    fast_shutter: Shutter | None = None,
 ) -> MsgGenerator[None]:
     """Take a tomography flyscan at each point along one step motor.
 
@@ -995,7 +1063,8 @@ def tomo_1d_step_scan(
     stop : float, default 180
         The stopping angle of the rotation, in degrees.
     use_shutter : bool, default True
-        Whether to use the shutters.
+        Whether to use the shutters. If True the front-end and photon shutters
+        must be open, and the plan opens and closes the fast shutter.
     sample_name : str | None, default None
         The name of the sample being scanned.
     alternate_flyscan_dir : bool, default False
@@ -1028,9 +1097,12 @@ def tomo_1d_step_scan(
     rot_motor : RotationMotor | None, default None
         The rotation motor; None uses ``amPhi``.
     fe_shutter : Shutter | None, default None
-        The front-end shutter; None uses ``fe_shutter``.
+        The front-end shutter, which must already be open; None uses ``fe_shutter``.
     photon_shutter : Shutter | None, default None
-        The photon shutter; None uses ``photon_shutter``.
+        The photon shutter, which must already be open; None uses
+        ``photon_shutter``.
+    fast_shutter : Shutter | None, default None
+        The fast shutter; None uses ``fast_shutter``.
     """
     yield from tomo_nd_step_scan(
         detector_configs,
@@ -1058,6 +1130,7 @@ def tomo_1d_step_scan(
         rot_motor=rot_motor,
         fe_shutter=fe_shutter,
         photon_shutter=photon_shutter,
+        fast_shutter=fast_shutter,
     )
 
 
@@ -1092,6 +1165,7 @@ def tomo_2d_step_scan(
     rot_motor: RotationMotor | None = None,
     fe_shutter: Shutter | None = None,
     photon_shutter: Shutter | None = None,
+    fast_shutter: Shutter | None = None,
 ) -> MsgGenerator[None]:
     """Take a tomography flyscan at each point of a 2-D grid of step motors.
 
@@ -1125,7 +1199,8 @@ def tomo_2d_step_scan(
     stop : float, default 180
         The stopping angle of the rotation, in degrees.
     use_shutter : bool, default True
-        Whether to use the shutters.
+        Whether to use the shutters. If True the front-end and photon shutters
+        must be open, and the plan opens and closes the fast shutter.
     sample_name : str | None, default None
         The name of the sample being scanned.
     alternate_flyscan_dir : bool, default False
@@ -1160,9 +1235,12 @@ def tomo_2d_step_scan(
     rot_motor : RotationMotor | None, default None
         The rotation motor; None uses ``amPhi``.
     fe_shutter : Shutter | None, default None
-        The front-end shutter; None uses ``fe_shutter``.
+        The front-end shutter, which must already be open; None uses ``fe_shutter``.
     photon_shutter : Shutter | None, default None
-        The photon shutter; None uses ``photon_shutter``.
+        The photon shutter, which must already be open; None uses
+        ``photon_shutter``.
+    fast_shutter : Shutter | None, default None
+        The fast shutter; None uses ``fast_shutter``.
     """
     yield from tomo_nd_step_scan(
         detector_configs,
@@ -1195,4 +1273,5 @@ def tomo_2d_step_scan(
         rot_motor=rot_motor,
         fe_shutter=fe_shutter,
         photon_shutter=photon_shutter,
+        fast_shutter=fast_shutter,
     )

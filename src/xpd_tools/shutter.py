@@ -16,6 +16,8 @@ from ophyd_async.core import (
     callback_on_mock_execute,
     callback_on_mock_put,
     default_mock_class,
+    derived_signal_r,
+    observe_signals_value,
     set_mock_value,
     wait_for_value,
 )
@@ -25,6 +27,7 @@ from ophyd_async.epics.core import (
     epics_signal_rw,
     epics_triggerable_command,
 )
+from ophyd_async.epics.motor import Motor
 
 
 class ShutterStatus(StrictEnum):
@@ -56,7 +59,14 @@ class MockShutter(DeviceMock["Shutter"]):
 
 @default_mock_class(MockShutter)
 class Shutter(EpicsDevice, Subscribable[bool], AsyncMovable[bool]):
-    """Photon shutter device.
+    """Shutter device.
+
+    Parameters
+    ----------
+    prefix : str
+        The PV prefix of the shutter, e.g. ``XF:28IDA-PPS{PSh}``.
+    name : str, default ""
+        The name of the device.
 
     Attributes
     ----------
@@ -69,7 +79,6 @@ class Shutter(EpicsDevice, Subscribable[bool], AsyncMovable[bool]):
     """
 
     def __init__(self, prefix: str, name: str = ""):
-
         super().__init__(prefix, name=name)
         self.status = epics_signal_r(ShutterStatus, f"{prefix}Pos-Sts")
         self.open_cmd = epics_triggerable_command(f"{prefix}Cmd:Opn-Cmd")
@@ -94,17 +103,16 @@ class Shutter(EpicsDevice, Subscribable[bool], AsyncMovable[bool]):
         AsyncStatus
             An object representing the status of the set operation.
         """
-        if value:
-            cmd_sig = self.open_cmd
-        else:
-            cmd_sig = self.close_cmd
-
-        await cmd_sig.execute()
+        await self._command(value)
         await wait_for_value(
             self.status,
             ShutterStatus.OPEN if value else ShutterStatus.CLOSED,
             timeout=DEFAULT_TIMEOUT,
         )
+
+    async def _command(self, value: bool) -> None:
+        """Send the open (True) or close (False) command."""
+        await (self.open_cmd if value else self.close_cmd).execute()
 
     def subscribe_reading(
         self, function: Callable[[dict[str, Reading[bool]]], None]
@@ -141,6 +149,196 @@ class Shutter(EpicsDevice, Subscribable[bool], AsyncMovable[bool]):
         """
         translator = self._sub_translators.pop(function)
         self.status.clear_sub(translator)
+
+
+#: The raw value of a fast shutter position switch when the shutter is in that
+#: position: the switches read "SW Low" (False) when made.
+FAST_SHUTTER_SWITCH_MADE = False
+
+
+def _made(raw: bool) -> bool:
+    """Whether a fast shutter position switch is made, from its raw value."""
+    return raw == FAST_SHUTTER_SWITCH_MADE
+
+
+def _switches_to_status(open_switch: bool, closed_switch: bool) -> ShutterStatus:
+    """Combine the fast shutter's raw position switch values into its status.
+
+    Closed only when the closed switch is made and the open switch is not. Any
+    other combination, including both or neither made, is not proven closed, so
+    it reads as open.
+    """
+    if _made(closed_switch) and not _made(open_switch):
+        return ShutterStatus.CLOSED
+    return ShutterStatus.OPEN
+
+
+class MockFastShutter(DeviceMock["FastShutter"]):
+    """Mock fast shutter that starts closed, with instant moves.
+
+    The switch at each end is made when the motor reaches it.
+    """
+
+    async def connect(self, device: "FastShutter") -> None:
+        def _update_switches(readings: dict[str, Reading[float]]) -> None:
+            (reading,) = readings.values()
+            position = reading["value"]
+            for switch, switch_position in (
+                (device.open_switch, device.open_position),
+                (device.closed_switch, device.closed_position),
+            ):
+                made = position == switch_position
+                set_mock_value(
+                    switch,
+                    FAST_SHUTTER_SWITCH_MADE if made else not FAST_SHUTTER_SWITCH_MADE,
+                )
+
+        set_mock_value(device.motor.user_setpoint, device.closed_position)
+        set_mock_value(device.motor.user_readback, device.closed_position)
+        device.motor.user_readback.subscribe_reading(_update_switches)
+
+
+@default_mock_class(MockFastShutter)
+class FastShutter(Shutter):
+    """The XPD-D fast shutter, driven by moving its rotation motor.
+
+    The IOC's open/close command records are not used: the shutter moves its
+    motor to the open or closed angle itself. Its state is read from the
+    physical position switches, which read "SW Low" when made; the motor
+    position is only a cross-check.
+
+    The status is closed only when the closed switch is made and the open switch
+    is not; anything else reads as open (not proven closed). After every open or
+    close the motor position must agree with the switches, otherwise an error
+    names both readings.
+
+    Parameters
+    ----------
+    prefix : str, default "XF:28IDC-ES:1{Sh2:Exp-Ax:5}"
+        The PV prefix of the shutter axis; the motor record is ``{prefix}Mtr``.
+    switch_prefix : str, default "XF:28IDC-ES:1{Sh:Exp}"
+        The PV prefix of the position switches ``Sw:Opn1-Sts`` and
+        ``Sw:Cls1-Sts``.
+    open_position : float, default -20.0
+        The motor position, in degrees, at which the shutter is open.
+    closed_position : float, default 20.0
+        The motor position, in degrees, at which the shutter is closed.
+    tolerance : float, default 0.5
+        How far, in degrees, the motor may be from a position and still agree
+        with the switches.
+    name : str, default ""
+        The name of the device.
+
+    Attributes
+    ----------
+    motor : Motor
+        The shutter's rotation motor.
+    open_switch : EpicsSignalR[bool]
+        The open position switch, False ("SW Low") when made.
+    closed_switch : EpicsSignalR[bool]
+        The closed position switch, False ("SW Low") when made.
+    status : SignalR[ShutterStatus]
+        Closed only when ``closed_switch`` is made and ``open_switch`` is not.
+    """
+
+    def __init__(
+        self,
+        prefix: str = "XF:28IDC-ES:1{Sh2:Exp-Ax:5}",
+        switch_prefix: str = "XF:28IDC-ES:1{Sh:Exp}",
+        open_position: float = -20.0,
+        closed_position: float = 20.0,
+        tolerance: float = 0.5,
+        name: str = "",
+    ):
+        if abs(open_position - closed_position) <= tolerance:
+            raise ValueError(
+                "open_position and closed_position must be further apart than "
+                "tolerance."
+            )
+        self.open_position = open_position
+        self.closed_position = closed_position
+        self.tolerance = tolerance
+        # Skip Shutter.__init__, whose PVs this shutter does not have.
+        EpicsDevice.__init__(self, prefix, name=name)
+        self.motor = Motor(f"{prefix}Mtr")
+        self.open_switch = epics_signal_r(bool, f"{switch_prefix}Sw:Opn1-Sts")
+        self.closed_switch = epics_signal_r(bool, f"{switch_prefix}Sw:Cls1-Sts")
+        self.status = derived_signal_r(
+            _switches_to_status,
+            open_switch=self.open_switch,
+            closed_switch=self.closed_switch,
+        )
+        self._sub_translators = {}
+
+    async def _command(self, value: bool) -> None:
+        """Open or close, confirmed by the switches, then check the position.
+
+        The requested state counts as shown only when its switch is made and the
+        other switch is not. Does not move if the switches already show it:
+        moving to where the motor already is changes no switch.
+
+        Raises
+        ------
+        TimeoutError
+            If the switches do not show the requested state within
+            ``DEFAULT_TIMEOUT`` of the move.
+        RuntimeError
+            If the motor position does not agree with the switches.
+        """
+        target = self.open_position if value else self.closed_position
+        state = "open" if value else "closed"
+        made, other = (
+            (self.open_switch, self.closed_switch)
+            if value
+            else (self.closed_switch, self.open_switch)
+        )
+
+        async def _shown() -> None:
+            values: dict[str, bool] = {}
+            async for signal, switch_value in observe_signals_value(made, other):
+                values[signal.name] = switch_value
+                if (
+                    len(values) == 2
+                    and _made(values[made.name])
+                    and not _made(values[other.name])
+                ):
+                    return
+
+        made_now, other_now = await asyncio.gather(made.get_value(), other.get_value())
+        if not (_made(made_now) and not _made(other_now)):
+            await self.motor.set(target)
+            try:
+                await asyncio.wait_for(_shown(), timeout=DEFAULT_TIMEOUT)
+            except TimeoutError as exc:
+                raise TimeoutError(
+                    f"{self.name}: the motor moved to {target}, but the switches "
+                    f"did not show {state} within {DEFAULT_TIMEOUT} s. "
+                    f"{await self._describe()}"
+                ) from exc
+        await self._check_position_agrees(target, state)
+
+    async def _check_position_agrees(self, target: float, state: str) -> None:
+        position = await self.motor.user_readback.get_value()
+        if abs(position - target) > self.tolerance:
+            raise RuntimeError(
+                f"{self.name}: the switches show {state}, but "
+                f"the motor is at {position}, not {target} (tolerance "
+                f"{self.tolerance}). The switches and motor position disagree; "
+                f"check the shutter before taking data. {await self._describe()}"
+            )
+
+    async def _describe(self) -> str:
+        """Both readbacks, for error messages."""
+        open_switch, closed_switch, position = await asyncio.gather(
+            self.open_switch.get_value(),
+            self.closed_switch.get_value(),
+            self.motor.user_readback.get_value(),
+        )
+        return (
+            f"Open switch {'made' if _made(open_switch) else 'not made'}, closed "
+            f"switch {'made' if _made(closed_switch) else 'not made'}, motor at "
+            f"{position}."
+        )
 
 
 class MockInterlockAcknowledge(DeviceMock["InterlockAcknowledge"]):
