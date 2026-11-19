@@ -15,8 +15,8 @@ from ophyd_async.epics.adkinetix import KinetixDetector
 from ophyd_async.fastcs.panda import CommonPandaBlocks, PandaPcompDirection
 from pydantic import model_validator
 
-from xpd_tools.detectors.pilatus4 import Pilatus4Detector
 from xpd_tools.detectors.dexela import DexelaDetector
+from xpd_tools.detectors.pilatus4 import Pilatus4Detector
 
 #: PandA TTL outputs wired to detectors (``MultiTrigMultiDetV1.yaml``). TTL1 is the
 #: Pilatus, TTL2 the Xspress3 and TTL3 the Kinetix (iris).

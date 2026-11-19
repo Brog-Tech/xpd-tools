@@ -141,13 +141,13 @@ def test_config_looks_up_detector_name(tomo_rig: TomoRig, monkeypatch):
 def _bad_sets(rig: TomoRig) -> list[tuple[list, str]]:
     pil = rig.config(rig.pilatus, 12, 0.002)
     return [
-        ([], "1 to 3 detector configs, got 0"),
+        ([], "1 to 4 detector configs, got 0"),
         ([pil, pil.model_copy(update={"ttl_out": 2})], "pilatus1 has more than one"),
         (
             [pil, rig.config(rig.iris, 6, 0.01).model_copy(update={"ttl_out": 1})],
             "iris1 and pilatus1 are both on TTL output 1",
         ),
-        ([pil.model_copy(update={"ttl_out": 4})], "TTL output 4, which is not one"),
+        ([pil.model_copy(update={"ttl_out": 5})], "TTL output 5, which is not one"),
         (
             [pil, rig.config(rig.iris, 5, 0.01)],
             r"12, must be a multiple .* iris1 \(5\)",
